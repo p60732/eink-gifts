@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>E Ink 贈品庫存管理</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --accent:#a87c72; --accent-bg:#f3ede9;
@@ -92,6 +93,12 @@ header .hbtn:hover{filter:brightness(.97)}
 .logpanel.show{transform:translateX(0)}
 .logpanel .lhead{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid var(--line)}
 .logpanel .lhead h3{font-size:16px}
+.lfilter{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.lfilter select,.lfilter input{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);outline:none;color:var(--ink);font-size:13px}
+.lfilter select:focus,.lfilter input:focus{border-color:var(--accent)}
+.lfilter-row{display:flex;align-items:center;gap:6px}
+.lfilter-row input{flex:1;min-width:0}
+.lfilter-row span{color:var(--mid);font-size:12px}
 .logpanel .llist{flex:1;overflow:auto;padding:8px}
 .logitem{display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--line)}
 .logitem img{width:42px;height:42px;border-radius:7px;object-fit:cover;background:var(--accent-bg)}
@@ -122,7 +129,10 @@ header .hbtn:hover{filter:brightness(.97)}
     🔍<input id="search" placeholder="搜尋品名…" oninput="renderCards()">
   </div>
   <button class="hbtn" onclick="openLog()">異動記錄</button>
+  <button class="hbtn" onclick="exportItems()">匯出</button>
+  <button class="hbtn" onclick="document.getElementById('importFile').click()">匯入</button>
   <button class="hbtn" onclick="configApi()">設定</button>
+  <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importItems(event)">
 </header>
 
 <div class="stats" id="stats"></div>
@@ -239,7 +249,19 @@ header .hbtn:hover{filter:brightness(.97)}
 <div class="logpanel" id="logPanel">
   <div class="lhead">
     <h3>📋 異動記錄</h3>
-    <button class="hbtn" onclick="document.getElementById('logPanel').classList.remove('show')">關閉</button>
+    <div style="display:flex;gap:6px">
+      <button class="hbtn" onclick="exportLogs()">匯出</button>
+      <button class="hbtn" onclick="document.getElementById('logPanel').classList.remove('show')">關閉</button>
+    </div>
+  </div>
+  <div class="lfilter">
+    <select id="logFilterItem" onchange="renderLogs()"></select>
+    <div class="lfilter-row">
+      <input type="date" id="logFilterFrom" onchange="renderLogs()">
+      <span>～</span>
+      <input type="date" id="logFilterTo" onchange="renderLogs()">
+      <button class="hbtn" onclick="clearLogFilter()">清除</button>
+    </div>
   </div>
   <div class="llist" id="logList"></div>
 </div>
@@ -508,12 +530,36 @@ async function confirmDelete(id, name){
 }
 
 /* ============ 異動記錄 ============ */
+let allLogs = [];
 async function openLog(){
   document.getElementById('logPanel').classList.add('show');
   const res = await apiGet({action:'getLogs'});
-  const logs = res.logs || [];
+  allLogs = res.logs || [];
+  // 填入品項下拉（只含有記錄的品項）
+  const sel = document.getElementById('logFilterItem');
+  const prev = sel.value;
+  const ids = [...new Set(allLogs.map(l=>l.品項ID))];
+  sel.innerHTML = '<option value="">全部品項</option>' +
+    ids.map(id=>{ const it = items.find(i=>i.ID===id); const nm = it?it.品名:(allLogs.find(l=>l.品項ID===id)||{}).品名||id; return `<option value="${id}">${esc(nm)}</option>`; }).join('');
+  sel.value = prev;
+  renderLogs();
+}
+function filteredLogs(){
+  const itemId = document.getElementById('logFilterItem').value;
+  const from = document.getElementById('logFilterFrom').value;
+  const to = document.getElementById('logFilterTo').value;
+  return allLogs.filter(l=>{
+    if(itemId && String(l.品項ID)!==itemId) return false;
+    const d = new Date(l.時間);
+    if(from && d < new Date(from+'T00:00:00')) return false;
+    if(to && d > new Date(to+'T23:59:59')) return false;
+    return true;
+  });
+}
+function renderLogs(){
+  const logs = filteredLogs();
   const list = document.getElementById('logList');
-  if(!logs.length){ list.innerHTML = '<div class="empty">尚無異動記錄</div>'; return; }
+  if(!logs.length){ list.innerHTML = '<div class="empty">沒有符合的記錄</div>'; return; }
   list.innerHTML = logs.map(l=>{
     const it = items.find(i=>i.ID===l.品項ID);
     const img = it&&it.圖片 ? `<img src="${esc(it.圖片)}" onerror="this.style.visibility='hidden'">` : '<img>';
@@ -529,6 +575,73 @@ async function openLog(){
       <div class="ldelta ${plus?'plus':'minus'}">${plus?'+':''}${l.變動量}</div>
     </div>`;
   }).join('');
+}
+function clearLogFilter(){
+  document.getElementById('logFilterItem').value = '';
+  document.getElementById('logFilterFrom').value = '';
+  document.getElementById('logFilterTo').value = '';
+  renderLogs();
+}
+
+/* ============ 匯出 / 匯入 Excel ============ */
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+function exportItems(){
+  if(!items.length){ showToast('沒有資料可匯出','error'); return; }
+  const rows = items.map(i=>({
+    ID:i.ID, 品名:i.品名, 數量:i.數量, 單位:i.單位,
+    低庫存警示:i.低庫存警示, 備註:i.備註, 最後更新:i.最後更新, 圖片:i.圖片
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '庫存');
+  XLSX.writeFile(wb, `贈品庫存_${todayStr()}.xlsx`);
+  showToast('已匯出庫存 Excel','success');
+}
+function exportLogs(){
+  const logs = filteredLogs();
+  if(!logs.length){ showToast('沒有記錄可匯出','error'); return; }
+  const ws = XLSX.utils.json_to_sheet(logs);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '異動記錄');
+  XLSX.writeFile(wb, `異動記錄_${todayStr()}.xlsx`);
+  showToast('已匯出異動記錄 Excel','success');
+}
+async function importItems(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  e.target.value = '';   // 允許重選同檔
+  try{
+    const buf = await f.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    if(!rows.length){ showToast('檔案沒有資料','error'); return; }
+    // 以「品名」為必填；有對應 ID 則更新，否則新增
+    const valid = rows.filter(r=> String(r.品名||'').trim());
+    if(!valid.length){ showToast('找不到「品名」欄','error'); return; }
+    if(!confirm(`將匯入 ${valid.length} 筆品項（既有 ID 會更新，其餘新增）。確定？`)) return;
+    showToast(`匯入中…（0/${valid.length}）`,'success');
+    let ok=0, fail=0;
+    for(let i=0;i<valid.length;i++){
+      const r = valid[i];
+      const payload = {
+        name:String(r.品名).trim(),
+        qty:Number(r.數量)||0,
+        unit:String(r.單位||'個').trim()||'個',
+        minAlert:Number(r.低庫存警示)||0,
+        note:String(r.備註||''),
+        imgUrl:String(r.圖片||'')
+      };
+      const idStr = String(r.ID||'').trim();
+      const exists = idStr && items.some(it=>it.ID===idStr);
+      const res = exists
+        ? await apiPost({action:'updateItem', id:idStr, ...payload})
+        : await apiPost({action:'addItem', ...payload});
+      if(res && res.error){ fail++; } else { ok++; }
+    }
+    await loadItems();
+    showToast(`匯入完成：成功 ${ok}、失敗 ${fail}`, fail?'error':'success');
+  }catch(err){ showToast('匯入失敗：'+err.message,'error'); }
 }
 
 /* ============ 設定 API ============ */
