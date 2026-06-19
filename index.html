@@ -273,7 +273,9 @@ header .hbtn:hover{filter:brightness(.97)}
 let items = [];
 let editingId = null;
 let pendingImg = '';
-const API_URL = localStorage.getItem('eink_api_url') || '';
+// 預設連到此專案的 Google Apps Script 後端；localStorage 可覆寫（設定按鈕）
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbySMDhdkdVjhx9bnbWj1Dw5pNwIHH57oEFpdQELBeUEuC_TvKNYeKhxzsG-loUw8972/exec';
+const API_URL = localStorage.getItem('eink_api_url') || DEFAULT_API_URL;
 
 /* ============ Mock 資料 ============ */
 const MOCK_ITEMS = [
