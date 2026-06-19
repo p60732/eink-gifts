@@ -61,6 +61,7 @@ header .hbtn:hover{filter:brightness(.97)}
 .fab{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:10px;z-index:20}
 .fab button{border-radius:24px;padding:14px 20px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(58,53,48,.18)}
 .fab .dispense{background:var(--accent);color:#fff}
+.fab .restock{background:var(--ok);color:#fff}
 .fab .add{background:var(--white);color:var(--accent);border:1px solid var(--line)}
 
 /* Modal */
@@ -129,6 +130,7 @@ header .hbtn:hover{filter:brightness(.97)}
 
 <div class="fab">
   <button class="dispense" onclick="openDispenseModal()">📤 拿出贈品</button>
+  <button class="restock" onclick="openRestockModal()">📥 補入庫存</button>
   <button class="add" onclick="openItemModal(null)">＋ 新增品項</button>
 </div>
 
@@ -159,6 +161,37 @@ header .hbtn:hover{filter:brightness(.97)}
     <div class="mbtns">
       <button class="cancel" onclick="closeOverlay('dispenseOverlay')">取消</button>
       <button class="save" onclick="doDispense()">確認拿出</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restock modal -->
+<div class="overlay" id="restockOverlay">
+  <div class="modal">
+    <h3>📥 補入庫存</h3>
+    <div class="field">
+      <label>選擇品項</label>
+      <select id="restockSelect" onchange="onRestockSelect()"></select>
+    </div>
+    <div class="preview" id="restockPreview" style="display:none">
+      <img id="rsImg" src="" alt="">
+      <div class="pstock">目前庫存<b id="rsStock">0</b></div>
+    </div>
+    <div class="field">
+      <label>補入數量</label>
+      <input type="number" id="restockQty" class="big" min="1" value="1">
+    </div>
+    <div class="field">
+      <label>備註（進貨單號 / 來源）</label>
+      <input type="text" id="restockNote" placeholder="選填">
+    </div>
+    <div class="field">
+      <label>操作者</label>
+      <input type="text" id="restockOperator" placeholder="選填">
+    </div>
+    <div class="mbtns">
+      <button class="cancel" onclick="closeOverlay('restockOverlay')">取消</button>
+      <button class="save" onclick="doRestock()">確認補入</button>
     </div>
   </div>
 </div>
@@ -378,6 +411,38 @@ async function doDispense(){
   const operator = document.getElementById('dispenseOperator').value;
   const newQty = await quickAdjust(id, -qty, note, operator);
   if(newQty!==null){ showToast(`已拿出 ${qty}${it.單位}，剩 ${newQty}`,'success'); closeOverlay('dispenseOverlay'); }
+}
+
+/* ============ 補入庫存 ============ */
+function openRestockModal(){
+  const sel = document.getElementById('restockSelect');
+  sel.innerHTML = '<option value="">— 請選擇 —</option>' +
+    items.map(i=>`<option value="${i.ID}">${esc(i.品名)}（${i.數量}${esc(i.單位)}）</option>`).join('');
+  document.getElementById('restockPreview').style.display='none';
+  document.getElementById('restockQty').value = 1;
+  document.getElementById('restockNote').value = '';
+  document.getElementById('restockOperator').value = '';
+  showOverlay('restockOverlay');
+}
+function onRestockSelect(){
+  const id = document.getElementById('restockSelect').value;
+  const it = items.find(i=>i.ID===id);
+  const box = document.getElementById('restockPreview');
+  if(!it){ box.style.display='none'; return; }
+  box.style.display='flex';
+  document.getElementById('rsImg').src = it.圖片||'';
+  document.getElementById('rsStock').textContent = it.數量;
+}
+async function doRestock(){
+  const id = document.getElementById('restockSelect').value;
+  const it = items.find(i=>i.ID===id);
+  if(!it){ showToast('請選擇品項','error'); return; }
+  const qty = parseInt(document.getElementById('restockQty').value,10);
+  if(!qty || qty<=0){ showToast('請輸入有效數量','error'); return; }
+  const note = document.getElementById('restockNote').value;
+  const operator = document.getElementById('restockOperator').value;
+  const newQty = await quickAdjust(id, qty, note, operator);
+  if(newQty!==null){ showToast(`已補入 ${qty}${it.單位}，共 ${newQty}`,'success'); closeOverlay('restockOverlay'); }
 }
 
 /* ============ 新增 / 編輯 ============ */
