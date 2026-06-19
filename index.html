@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E Ink 贈品庫存管理</title>
+<style>
+:root{
+  --accent:#a87c72; --accent-bg:#f3ede9;
+  --warn:#b08a6e;   --warn-bg:#f5ede6;
+  --ok:#7a9387;     --ok-bg:#edf2f0;
+  --danger:#a0574e; --danger-bg:#f5ebe9;
+  --ink:#3a3530; --mid:#8c847c; --line:#e8e2dc;
+  --bg:#f2ede8; --white:#faf8f6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+input,select,textarea{font-family:inherit;font-size:14px}
+
+/* Header */
+header{height:56px;background:var(--white);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;padding:0 16px;position:sticky;top:0;z-index:10}
+header .logo{font-weight:800;font-size:16px;color:var(--accent);white-space:nowrap}
+header .search{flex:1;max-width:360px;display:flex;align-items:center;background:var(--bg);
+  border:1px solid var(--line);border-radius:7px;padding:0 10px}
+header .search input{flex:1;border:none;background:none;padding:8px 6px;outline:none;color:var(--ink)}
+header .hbtn{padding:8px 12px;border-radius:7px;background:var(--accent-bg);color:var(--accent);font-weight:600;font-size:13px}
+header .hbtn:hover{filter:brightness(.97)}
+
+/* Stats bar */
+.stats{display:flex;gap:10px;padding:14px 16px 4px;flex-wrap:wrap}
+.stat{background:var(--white);border:1px solid var(--line);border-radius:10px;
+  padding:11px 16px;display:flex;align-items:center;gap:10px}
+.stat .label{font-size:12px;color:var(--mid)}
+.stat .value{font-size:16px;font-weight:700}
+.stat.low .value{color:var(--warn)}
+
+/* Cards grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;padding:14px 16px 90px}
+.card{background:var(--white);border:1px solid var(--line);border-top:3px solid var(--ok);
+  border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card.low{border-top-color:var(--warn)}
+.card .img{aspect-ratio:4/3;background:var(--accent-bg);overflow:hidden}
+.card .img img{width:100%;height:100%;object-fit:cover;display:block}
+.card .body{padding:12px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card .name{font-weight:700;font-size:15px}
+.card .qtyrow{display:flex;align-items:baseline;gap:5px}
+.card .qty{font-size:38px;font-weight:800;line-height:1}
+.card .unit{font-size:13px;color:var(--mid)}
+.card .lowtag{display:inline-block;background:var(--warn-bg);color:var(--warn);
+  font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;align-self:flex-start}
+.card .note{font-size:12px;color:var(--mid);flex:1}
+.card .meta{font-size:10px;color:var(--mid)}
+.card .actions{display:flex;gap:8px;border-top:1px solid var(--line);padding:8px 14px}
+.card .actions button{flex:1;padding:6px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--mid)}
+.card .actions .edit:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-bg)}
+.card .actions .del:hover{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-bg)}
+
+/* FAB */
+.fab{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:10px;z-index:20}
+.fab button{border-radius:24px;padding:14px 20px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(58,53,48,.18)}
+.fab .dispense{background:var(--accent);color:#fff}
+.fab .add{background:var(--white);color:var(--accent);border:1px solid var(--line)}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(58,53,48,.35);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.overlay.show{display:flex}
+.modal{background:var(--white);border-radius:12px;width:100%;max-width:440px;max-height:90vh;overflow:auto;padding:20px}
+.modal h3{font-size:17px;margin-bottom:16px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12px;color:var(--mid);margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--bg);outline:none;color:var(--ink)}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:54px}
+.field .big{font-size:26px;font-weight:800;text-align:center;padding:12px}
+.row2{display:flex;gap:10px}.row2>*{flex:1}
+.preview{display:flex;gap:12px;align-items:center;background:var(--bg);border-radius:9px;padding:10px;margin-bottom:13px}
+.preview img{width:60px;height:60px;border-radius:8px;object-fit:cover;background:var(--accent-bg)}
+.preview .pstock{font-size:13px;color:var(--mid)}
+.preview .pstock b{font-size:22px;color:var(--ink);display:block}
+.modal .mbtns{display:flex;gap:10px;margin-top:18px}
+.modal .mbtns button{flex:1;padding:11px;border-radius:7px;font-weight:700}
+.modal .mbtns .cancel{background:var(--bg);color:var(--mid)}
+.modal .mbtns .save{background:var(--accent);color:#fff}
+
+/* Log panel */
+.logpanel{position:fixed;top:0;right:0;height:100%;width:360px;max-width:90vw;background:var(--white);
+  border-left:1px solid var(--line);transform:translateX(100%);transition:transform .25s;z-index:60;
+  display:flex;flex-direction:column}
+.logpanel.show{transform:translateX(0)}
+.logpanel .lhead{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid var(--line)}
+.logpanel .lhead h3{font-size:16px}
+.logpanel .llist{flex:1;overflow:auto;padding:8px}
+.logitem{display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--line)}
+.logitem img{width:42px;height:42px;border-radius:7px;object-fit:cover;background:var(--accent-bg)}
+.logitem .linfo{flex:1;min-width:0}
+.logitem .lname{font-weight:600;font-size:13px}
+.logitem .lnote{font-size:12px;color:var(--mid)}
+.logitem .ltime{font-size:10px;color:var(--mid)}
+.logitem .ldelta{font-weight:800;font-size:16px;white-space:nowrap}
+.logitem .ldelta.plus{color:var(--ok)}
+.logitem .ldelta.minus{color:var(--danger)}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);opacity:0;
+  background:var(--ink);color:#fff;padding:11px 20px;border-radius:24px;font-size:13px;font-weight:600;
+  z-index:100;transition:.3s;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.success{background:var(--ok)}
+.toast.error{background:var(--danger)}
+
+.empty{text-align:center;color:var(--mid);padding:60px 20px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🎁 贈品庫存</div>
+  <div class="search">
+    🔍<input id="search" placeholder="搜尋品名…" oninput="renderCards()">
+  </div>
+  <button class="hbtn" onclick="openLog()">異動記錄</button>
+  <button class="hbtn" onclick="configApi()">設定</button>
+</header>
+
+<div class="stats" id="stats"></div>
+<div class="grid" id="grid"></div>
+
+<div class="fab">
+  <button class="dispense" onclick="openDispenseModal()">📤 拿出贈品</button>
+  <button class="add" onclick="openItemModal(null)">＋ 新增品項</button>
+</div>
+
+<!-- Dispense modal -->
+<div class="overlay" id="dispenseOverlay">
+  <div class="modal">
+    <h3>📤 拿出贈品</h3>
+    <div class="field">
+      <label>選擇品項</label>
+      <select id="dispenseSelect" onchange="onDispenseSelect()"></select>
+    </div>
+    <div class="preview" id="dispensePreview" style="display:none">
+      <img id="dpImg" src="" alt="">
+      <div class="pstock">目前庫存<b id="dpStock">0</b></div>
+    </div>
+    <div class="field">
+      <label>拿出數量</label>
+      <input type="number" id="dispenseQty" class="big" min="1" value="1">
+    </div>
+    <div class="field">
+      <label>備註（發給誰 / 活動名）</label>
+      <input type="text" id="dispenseNote" placeholder="選填">
+    </div>
+    <div class="field">
+      <label>操作者</label>
+      <input type="text" id="dispenseOperator" placeholder="選填">
+    </div>
+    <div class="mbtns">
+      <button class="cancel" onclick="closeOverlay('dispenseOverlay')">取消</button>
+      <button class="save" onclick="doDispense()">確認拿出</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item modal -->
+<div class="overlay" id="itemOverlay">
+  <div class="modal">
+    <h3 id="itemModalTitle">新增品項</h3>
+    <div class="field">
+      <label>品名</label>
+      <input type="text" id="fName">
+    </div>
+    <div class="row2">
+      <div class="field"><label>數量</label><input type="number" id="fQty" value="0"></div>
+      <div class="field"><label>單位</label><input type="text" id="fUnit" value="個"></div>
+    </div>
+    <div class="field">
+      <label>低庫存警示（0 = 不警示）</label>
+      <input type="number" id="fMinAlert" value="0">
+    </div>
+    <div class="field">
+      <label>備註</label>
+      <textarea id="fNote"></textarea>
+    </div>
+    <div class="field">
+      <label>圖片網址</label>
+      <input type="text" id="fImgUrl" placeholder="https://… 或下方上傳" oninput="onImgUrlInput()">
+    </div>
+    <div class="field">
+      <label>或上傳本地圖片</label>
+      <input type="file" id="fImgFile" accept="image/*" onchange="onImgFile(event)">
+    </div>
+    <div class="preview" id="imgPreviewBox" style="display:none">
+      <img id="imgPreview" src="" alt="">
+      <div class="pstock">圖片預覽</div>
+    </div>
+    <div class="mbtns">
+      <button class="cancel" onclick="closeOverlay('itemOverlay')">取消</button>
+      <button class="save" onclick="saveItem()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log panel -->
+<div class="logpanel" id="logPanel">
+  <div class="lhead">
+    <h3>📋 異動記錄</h3>
+    <button class="hbtn" onclick="document.getElementById('logPanel').classList.remove('show')">關閉</button>
+  </div>
+  <div class="llist" id="logList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 狀態 ============ */
+let items = [];
+let editingId = null;
+let pendingImg = '';
+const API_URL = localStorage.getItem('eink_api_url') || '';
+
+/* ============ Mock 資料 ============ */
+const MOCK_ITEMS = [
+  { ID:"G001", 品名:"便當袋",     數量:400, 單位:"個", 低庫存警示:50, 備註:"Love E Ink 印花款", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G001.jpg" },
+  { ID:"G002", 品名:"鋼杯",       數量:254, 單位:"個", 低庫存警示:30, 備註:"", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G002.jpg" },
+  { ID:"G003", 品名:"拉鏈袋",     數量:210, 單位:"個", 低庫存警示:30, 備註:"網格款 We Make Surfaces Smart and Green", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G003.jpg" },
+  { ID:"G004", 品名:"咖啡渣杯",   數量:12,  單位:"個", 低庫存警示:10, 備註:"咖啡渣＋竹纖維製，符合美標FDA/歐標LFGB", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G004.jpg" },
+  { ID:"G005", 品名:"飲料袋",     數量:160, 單位:"個", 低庫存警示:20, 備註:"紅色提把帆布", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G005.jpg" },
+  { ID:"G006", 品名:"行李箱綁帶", 數量:616, 單位:"個", 低庫存警示:50, 備註:"紅白魔鬼氈捲裝", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G006.jpg" },
+];
+let MOCK_LOGS = [];
+
+/* ============ API 封裝（mock fallback）============ */
+async function apiGet(params){
+  if(!API_URL){
+    if(params.action==='getAll') return { items: JSON.parse(JSON.stringify(MOCK_ITEMS)) };
+    if(params.action==='getLogs'){
+      let logs = MOCK_LOGS;
+      if(params.itemId) logs = logs.filter(l=>l.品項ID===params.itemId);
+      return { logs: logs.slice(0,100) };
+    }
+    return {};
+  }
+  const qs = new URLSearchParams(params).toString();
+  const r = await fetch(API_URL+'?'+qs);
+  return r.json();
+}
+async function apiPost(body){
+  if(!API_URL) return mockPost(body);
+  const r = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return r.json();
+}
+function mockPost(body){
+  const now = new Date().toISOString();
+  if(body.action==='addItem'){
+    const id = 'G'+String(Date.now()).slice(-6);
+    MOCK_ITEMS.push({ ID:id, 品名:body.name, 數量:+body.qty, 單位:body.unit, 低庫存警示:+body.minAlert, 備註:body.note, 最後更新:now, 圖片:body.imgUrl });
+    return { success:true, id };
+  }
+  if(body.action==='updateItem'){
+    const it = MOCK_ITEMS.find(i=>i.ID===body.id);
+    if(it){ Object.assign(it,{品名:body.name,數量:+body.qty,單位:body.unit,低庫存警示:+body.minAlert,備註:body.note,最後更新:now,圖片:body.imgUrl}); }
+    return { success:true };
+  }
+  if(body.action==='deleteItem'){
+    const i = MOCK_ITEMS.findIndex(i=>i.ID===body.id);
+    if(i>=0) MOCK_ITEMS.splice(i,1);
+    return { success:true };
+  }
+  if(body.action==='adjustQty'){
+    const it = MOCK_ITEMS.find(i=>i.ID===body.id);
+    if(!it) return { error:'找不到品項' };
+    const newQty = it.數量 + (+body.delta);
+    it.數量 = newQty; it.最後更新 = now;
+    MOCK_LOGS.unshift({ 時間:now, 品項ID:it.ID, 品名:it.品名, 變動量:+body.delta, 變動後數量:newQty, 備註:body.note||'', 操作者:body.operator||'' });
+    return { success:true, newQty };
+  }
+  return { error:'未知動作' };
+}
+
+/* ============ 載入 / 渲染 ============ */
+async function loadItems(){
+  try{
+    const res = await apiGet({action:'getAll'});
+    if(res.error) throw new Error(res.error);
+    items = res.items || [];
+    renderStats(); renderCards();
+  }catch(e){
+    // API 失敗時自動回退 mock，確保畫面一定有資料
+    console.warn('載入失敗，回退 mock 資料：', e.message);
+    items = JSON.parse(JSON.stringify(MOCK_ITEMS));
+    renderStats(); renderCards();
+    if(API_URL) showToast('API 連線失敗，已顯示預覽資料','error');
+  }
+}
+function isLow(it){ return it.低庫存警示>0 && it.數量<=it.低庫存警示; }
+
+function renderStats(){
+  const lowCount = items.filter(isLow).length;
+  let last = items.reduce((m,i)=> i.最後更新>m ? i.最後更新 : m, '');
+  let t = last ? new Date(last) : null;
+  const hhmm = t ? String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0') : '—';
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><span class="label">品項總數</span><span class="value">${items.length}</span></div>
+    <div class="stat low"><span class="label">低庫存警示</span><span class="value">${lowCount}</span></div>
+    <div class="stat"><span class="label">最後更新</span><span class="value">${hhmm}</span></div>`;
+}
+function renderCards(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const list = items.filter(i=> i.品名.toLowerCase().includes(q));
+  const grid = document.getElementById('grid');
+  if(!list.length){ grid.innerHTML = '<div class="empty">沒有符合的品項</div>'; return; }
+  grid.innerHTML = '';
+  list.forEach(it=> grid.appendChild(buildCard(it)));
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function buildCard(it){
+  const low = isLow(it);
+  const div = document.createElement('div');
+  div.className = 'card'+(low?' low':'');
+  const t = it.最後更新 ? new Date(it.最後更新) : null;
+  const timeStr = t ? `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}` : '';
+  div.innerHTML = `
+    <div class="img">${it.圖片?`<img src="${esc(it.圖片)}" alt="" onerror="this.style.display='none'">`:''}</div>
+    <div class="body">
+      <div class="name">${esc(it.品名)}</div>
+      ${low?'<span class="lowtag">⚠ 低庫存</span>':''}
+      <div class="qtyrow"><span class="qty">${it.數量}</span><span class="unit">${esc(it.單位)}</span></div>
+      <div class="note">${esc(it.備註)}</div>
+      <div class="meta">更新：${timeStr}</div>
+    </div>
+    <div class="actions">
+      <button class="edit">編輯</button>
+      <button class="del">刪除</button>
+    </div>`;
+  div.querySelector('.edit').onclick = ()=>openItemModal(it);
+  div.querySelector('.del').onclick = ()=>confirmDelete(it.ID, it.品名);
+  return div;
+}
+
+/* ============ 調整數量 ============ */
+async function quickAdjust(id, delta, note, operator){
+  const res = await apiPost({action:'adjustQty', id, delta, note, operator});
+  if(res.error){ showToast(res.error,'error'); return null; }
+  await loadItems();
+  return res.newQty;
+}
+
+/* ============ 拿出贈品 ============ */
+function openDispenseModal(){
+  const sel = document.getElementById('dispenseSelect');
+  sel.innerHTML = '<option value="">— 請選擇 —</option>' +
+    items.map(i=>`<option value="${i.ID}">${esc(i.品名)}（${i.數量}${esc(i.單位)}）</option>`).join('');
+  document.getElementById('dispensePreview').style.display='none';
+  document.getElementById('dispenseQty').value = 1;
+  document.getElementById('dispenseNote').value = '';
+  document.getElementById('dispenseOperator').value = '';
+  showOverlay('dispenseOverlay');
+}
+function onDispenseSelect(){
+  const id = document.getElementById('dispenseSelect').value;
+  const it = items.find(i=>i.ID===id);
+  const box = document.getElementById('dispensePreview');
+  if(!it){ box.style.display='none'; return; }
+  box.style.display='flex';
+  document.getElementById('dpImg').src = it.圖片||'';
+  document.getElementById('dpStock').textContent = it.數量;
+}
+async function doDispense(){
+  const id = document.getElementById('dispenseSelect').value;
+  const it = items.find(i=>i.ID===id);
+  if(!it){ showToast('請選擇品項','error'); return; }
+  const qty = parseInt(document.getElementById('dispenseQty').value,10);
+  if(!qty || qty<=0){ showToast('請輸入有效數量','error'); return; }
+  if(qty > it.數量){ showToast('超過庫存數量！','error'); return; }
+  const note = document.getElementById('dispenseNote').value;
+  const operator = document.getElementById('dispenseOperator').value;
+  const newQty = await quickAdjust(id, -qty, note, operator);
+  if(newQty!==null){ showToast(`已拿出 ${qty}${it.單位}，剩 ${newQty}`,'success'); closeOverlay('dispenseOverlay'); }
+}
+
+/* ============ 新增 / 編輯 ============ */
+function openItemModal(item){
+  editingId = item ? item.ID : null;
+  pendingImg = item ? (item.圖片||'') : '';
+  document.getElementById('itemModalTitle').textContent = item?'編輯品項':'新增品項';
+  document.getElementById('fName').value = item?item.品名:'';
+  document.getElementById('fQty').value = item?item.數量:0;
+  document.getElementById('fUnit').value = item?item.單位:'個';
+  document.getElementById('fMinAlert').value = item?item.低庫存警示:0;
+  document.getElementById('fNote').value = item?item.備註:'';
+  document.getElementById('fImgUrl').value = item?(item.圖片||''):'';
+  document.getElementById('fImgFile').value = '';
+  updateImgPreview();
+  showOverlay('itemOverlay');
+}
+function onImgUrlInput(){
+  pendingImg = document.getElementById('fImgUrl').value.trim();
+  updateImgPreview();
+}
+function onImgFile(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ pendingImg = reader.result; document.getElementById('fImgUrl').value=''; updateImgPreview(); };
+  reader.readAsDataURL(f);
+}
+function updateImgPreview(){
+  const box = document.getElementById('imgPreviewBox');
+  if(pendingImg){ box.style.display='flex'; document.getElementById('imgPreview').src = pendingImg; }
+  else box.style.display='none';
+}
+async function saveItem(){
+  const name = document.getElementById('fName').value.trim();
+  if(!name){ showToast('請輸入品名','error'); return; }
+  // 網址優先於 base64
+  const url = document.getElementById('fImgUrl').value.trim();
+  const imgUrl = url || pendingImg;
+  const payload = {
+    name,
+    qty: document.getElementById('fQty').value,
+    unit: document.getElementById('fUnit').value.trim()||'個',
+    minAlert: document.getElementById('fMinAlert').value,
+    note: document.getElementById('fNote').value,
+    imgUrl
+  };
+  let res;
+  if(editingId){ res = await apiPost({action:'updateItem', id:editingId, ...payload}); }
+  else { res = await apiPost({action:'addItem', ...payload}); }
+  if(res.error){ showToast(res.error,'error'); return; }
+  showToast(editingId?'已更新':'已新增','success');
+  closeOverlay('itemOverlay');
+  await loadItems();
+}
+async function confirmDelete(id, name){
+  if(!confirm(`確定刪除「${name}」？`)) return;
+  const res = await apiPost({action:'deleteItem', id});
+  if(res.error){ showToast(res.error,'error'); return; }
+  showToast('已刪除','success');
+  await loadItems();
+}
+
+/* ============ 異動記錄 ============ */
+async function openLog(){
+  document.getElementById('logPanel').classList.add('show');
+  const res = await apiGet({action:'getLogs'});
+  const logs = res.logs || [];
+  const list = document.getElementById('logList');
+  if(!logs.length){ list.innerHTML = '<div class="empty">尚無異動記錄</div>'; return; }
+  list.innerHTML = logs.map(l=>{
+    const it = items.find(i=>i.ID===l.品項ID);
+    const img = it&&it.圖片 ? `<img src="${esc(it.圖片)}" onerror="this.style.visibility='hidden'">` : '<img>';
+    const t = new Date(l.時間);
+    const ts = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+    const plus = l.變動量>=0;
+    return `<div class="logitem">${img}
+      <div class="linfo">
+        <div class="lname">${esc(l.品名)}</div>
+        <div class="lnote">${esc(l.備註)||'—'}${l.操作者?' · '+esc(l.操作者):''}</div>
+        <div class="ltime">${ts} · 後 ${l.變動後數量}</div>
+      </div>
+      <div class="ldelta ${plus?'plus':'minus'}">${plus?'+':''}${l.變動量}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ============ 設定 API ============ */
+function configApi(){
+  const cur = localStorage.getItem('eink_api_url')||'';
+  const v = prompt('輸入 Google Apps Script Web App 網址（留空 = 使用 mock 預覽資料）：', cur);
+  if(v===null) return;
+  if(v.trim()) localStorage.setItem('eink_api_url', v.trim());
+  else localStorage.removeItem('eink_api_url');
+  location.reload();
+}
+
+/* ============ Toast / Overlay ============ */
+let toastTimer;
+function showToast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show '+(type||'');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.className='toast '+(type||''), 2200);
+}
+function showOverlay(id){ document.getElementById(id).classList.add('show'); }
+function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('show'); });
+});
+
+/* ============ 啟動 ============ */
+if(!API_URL) console.log('[mock 模式] 未設定 API_URL，使用記憶體假資料');
+loadItems();
+</script>
+</body>
+</html>
