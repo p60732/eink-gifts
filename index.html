@@ -281,7 +281,8 @@ async function apiGet(params){
 }
 async function apiPost(body){
   if(!API_URL) return mockPost(body);
-  const r = await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  // 不帶 Content-Type，避免觸發 CORS 預檢（GAS 仍可讀 e.postData.contents）
+  const r = await fetch(API_URL,{method:'POST',body:JSON.stringify(body)});
   return r.json();
 }
 function mockPost(body){
