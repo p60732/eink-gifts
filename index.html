@@ -109,6 +109,8 @@ header .hbtn:hover{filter:brightness(.97)}
 .logitem .ldelta{font-weight:800;font-size:16px;white-space:nowrap}
 .logitem .ldelta.plus{color:var(--ok)}
 .logitem .ldelta.minus{color:var(--danger)}
+.logitem .ldel{align-self:center;margin-left:2px;width:22px;height:22px;border-radius:50%;color:var(--mid);font-size:12px;line-height:1;flex:none}
+.logitem .ldel:hover{background:var(--danger-bg);color:var(--danger)}
 
 /* Toast */
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);opacity:0;
@@ -334,6 +336,11 @@ function mockPost(body){
     MOCK_LOGS.unshift({ 時間:now, 品項ID:it.ID, 品名:it.品名, 變動量:+body.delta, 變動後數量:newQty, 備註:body.note||'', 操作者:body.operator||'' });
     return { success:true, newQty };
   }
+  if(body.action==='deleteLog'){
+    const i = MOCK_LOGS.findIndex(l=>String(l.時間)===String(body.time));
+    if(i>=0) MOCK_LOGS.splice(i,1);
+    return { success:true };
+  }
   return { error:'未知動作' };
 }
 
@@ -434,7 +441,12 @@ async function doDispense(){
   if(qty > it.數量){ showToast('超過庫存數量！','error'); return; }
   const note = document.getElementById('dispenseNote').value;
   const operator = document.getElementById('dispenseOperator').value;
+  // 二次確認，避免手滑連續拿出
+  if(!confirm(`確定拿出「${it.品名}」${qty}${it.單位}？\n拿出後剩 ${it.數量 - qty}${it.單位}`)) return;
+  const btn = document.querySelector('#dispenseOverlay .save');
+  if(btn){ btn.disabled = true; btn.textContent = '處理中…'; }
   const newQty = await quickAdjust(id, -qty, note, operator);
+  if(btn){ btn.disabled = false; btn.textContent = '確認拿出'; }
   if(newQty!==null){ showToast(`已拿出 ${qty}${it.單位}，剩 ${newQty}`,'success'); closeOverlay('dispenseOverlay'); }
 }
 
@@ -575,8 +587,18 @@ function renderLogs(){
         <div class="ltime">${ts} · 後 ${l.變動後數量}</div>
       </div>
       <div class="ldelta ${plus?'plus':'minus'}">${plus?'+':''}${l.變動量}</div>
+      <button class="ldel" title="刪除此記錄" onclick="deleteLogEntry('${l.時間}', this)">✕</button>
     </div>`;
   }).join('');
+}
+async function deleteLogEntry(time, btn){
+  if(!confirm('刪除這筆異動記錄？\n（僅移除記錄，不會回復庫存數量）')) return;
+  if(btn){ btn.disabled = true; btn.textContent = '…'; }
+  const res = await apiPost({action:'deleteLog', time});
+  if(res.error){ showToast(res.error,'error'); if(btn){ btn.disabled=false; btn.textContent='✕'; } return; }
+  allLogs = allLogs.filter(l=>String(l.時間)!==String(time));
+  renderLogs();
+  showToast('已刪除記錄','success');
 }
 function clearLogFilter(){
   document.getElementById('logFilterItem').value = '';

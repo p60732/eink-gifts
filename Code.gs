@@ -150,6 +150,15 @@ function doPost(e){
       return json({ success:true, newQty });
     }
 
+    if(action==='deleteLog'){
+      const sh = logsSheet();
+      const times = sh.getRange(1,1,Math.max(sh.getLastRow(),1),1).getValues();
+      for(let i=times.length-1;i>=1;i--){
+        if(String(times[i][0])===String(body.time)){ sh.deleteRow(i+1); return json({ success:true }); }
+      }
+      return json({ error:'找不到記錄' });
+    }
+
     return json({ error:'未知 action' });
   }catch(err){
     return json({ error: String(err) });
