@@ -205,6 +205,7 @@ function rowsToObjects_(values){
 function readItems_(){ return rowsToObjects_(itemsSheet_().getDataRange().getValues()); }
 /** 讀取用的庫存清單：快取 2 分鐘；網頁上任何寫入後立即清除 */
 const ITEMS_KEY = 'items_v1';
+const LOGS0_KEY = 'logs0_v1';
 function readItemsCached_(){
   const c = CacheService.getScriptCache();
   const raw = c.get(ITEMS_KEY);
@@ -583,7 +584,18 @@ const ACTIONS = {
   },
 
   /** 異動記錄（新到舊）。沒有篩選時只讀需要的那幾列 */
-  getLogs: (s, b) => readLogsPage_(b),
+  getLogs: (s, b) => {
+    // 最常用的「最新 20 筆」有快取；網頁上任何寫入後立即清除
+    const isFirst = !b.itemId && !b.fromTs && !b.toTs && !b.offset && (b.limit == null || Number(b.limit) === 20);
+    if (!isFirst) return readLogsPage_(b);
+    const c = CacheService.getScriptCache();
+    const raw = c.get(LOGS0_KEY);
+    if (raw) return JSON.parse(raw);
+    const out = readLogsPage_(b);
+    const json = JSON.stringify(out);
+    if (json.length < 90000) c.put(LOGS0_KEY, json, DATA_TTL);
+    return out;
+  },
 
   changePasscode: (s, b) => changePasscode_(s, b),
 
@@ -800,7 +812,7 @@ function doPost(e){
     console.error(err);
     return json_({ error: '操作失敗，請稍後再試' });
   } finally {
-    if (writeAction) { try { CacheService.getScriptCache().remove(ITEMS_KEY); } catch (x) {} }
+    if (writeAction) { try { CacheService.getScriptCache().removeAll([ITEMS_KEY, LOGS0_KEY]); } catch (x) {} }
     if (lock.hasLock()) lock.releaseLock();
   }
 }
