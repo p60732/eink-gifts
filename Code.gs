@@ -1,12 +1,15 @@
 /**
  * E Ink 贈品庫存管理系統 — Google Apps Script 後端
- * 部署為 Web App（執行身分：我；存取權：所有人）— 所有讀寫都需管理者登入
+ * 部署為 Web App（執行身分：我；存取權：所有人）— 可在「設定」分頁切換是否需要登入
  *
  * 管理者設定（僅限試算表擁有者，在編輯器執行）：
  *   1. 在「管理者」分頁新增一列，填「名稱」、「啟用」勾選
  *   2. 編輯器選 generateInitCodes → 執行，會在「初始碼」欄產生一次性代碼
  *   3. 把初始碼私下交給該管理者；對方登入後必須設定自己的密碼，初始碼隨即失效
  *   忘記密碼：清空該列「密碼雜湊」「鹽」→ 再執行 generateInitCodes
+ *
+ * 登入開關：「設定」分頁的「需要登入」取消勾選 = 免登入（任何知道網址的人都能操作），
+ *   此時操作者記為「免登入操作者」欄的名稱。勾選後立即改為需要登入。
  *
  * 異動記錄為帳本：不可刪除，登打錯誤請用「沖銷」產生反向記錄。
  */
@@ -32,6 +35,11 @@ const FAIL_MAX = 5;                // 連續失敗次數上限
 const FAIL_LOCK = 15 * 60;         // 鎖定 15 分鐘
 const HASH_ROUNDS = 300;
 const REVERSIBLE = ['領用','補貨'];
+const CONFIG_DEFAULTS = [
+  ['圖片資料夾ID', '', '存放贈品圖片的雲端硬碟資料夾；留空會自動建立'],
+  ['需要登入', false, '勾選 = 需要管理者登入；取消勾選 = 任何知道網址的人都能操作'],
+  ['免登入操作者', 'Kim', '不需登入時，異動記錄上的操作者名稱']
+];
 
 /* ============ 僅限擁有者在編輯器執行 ============ */
 function initSheets(){
@@ -86,11 +94,21 @@ function configSheet_(){
   if (!sh) {
     sh = ss.insertSheet(SHEET_CONFIG);
     sh.getRange(1,1,1,CONFIG_HEADERS.length).setValues([CONFIG_HEADERS]);
-    sh.getRange(2,1,1,3).setValues([['圖片資料夾ID','','存放贈品圖片的雲端硬碟資料夾；留空會自動建立']]);
     sh.setColumnWidth(1, 140); sh.setColumnWidth(2, 320); sh.setColumnWidth(3, 360);
   }
   return sh;
 }
+/** 補上缺少的設定列（不覆蓋已有的值） */
+function ensureConfigDefaults_(){
+  const sh = configSheet_();
+  const keys = sh.getDataRange().getValues().map(r => r[0]);
+  CONFIG_DEFAULTS.forEach(d => {
+    if (keys.indexOf(d[0]) >= 0) return;
+    sh.appendRow(d);
+    if (typeof d[1] === 'boolean') sh.getRange(sh.getLastRow(), 2).insertCheckboxes();
+  });
+}
+function loginRequired_(){ return getConfig_('需要登入').toUpperCase() === 'TRUE'; }
 function getConfig_(key){
   const vals = configSheet_().getDataRange().getValues();
   for (let i = 1; i < vals.length; i++) if (vals[i][0] === key) return String(vals[i][1] || '').trim();
@@ -333,7 +351,7 @@ function applyDelta_(id, delta){
 }
 
 const ACTIONS = {
-  getAll: (s) => ({ items: readItems_(), user: s.name }),
+  getAll: (s) => ({ items: readItems_(), user: s.name, openMode: !!s.open }),
 
   getLogs: (s, b) => {
     let logs = readLogs_();
@@ -440,11 +458,17 @@ function doPost(e){
     try { body = JSON.parse(e.postData.contents); } catch (x) { throw userError_('資料格式錯誤'); }
     const action = String(body.action || '');
     ensureLogSchema_();
+    ensureConfigDefaults_();
 
     if (action === 'login') return json_(login_(body));
     if (!Object.prototype.hasOwnProperty.call(ACTIONS, action)) throw userError_('未知的操作');
 
-    const s = auth_(body.token);
+    let s;
+    if (loginRequired_()) s = auth_(body.token);
+    else {
+      if (action === 'changePasscode' || action === 'logout') throw userError_('目前為免登入模式');
+      s = { name: text_(getConfig_('免登入操作者'), LIMITS.adminName, '操作者') || '未登入', mustChange: false, token: '', open: true };
+    }
     if (s.mustChange && action !== 'changePasscode' && action !== 'logout') throw userError_('請先設定新密碼', 'MUST_CHANGE');
     return json_(ACTIONS[action](s, body));
   } catch (err) {

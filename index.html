@@ -346,6 +346,7 @@ const IMPORT_MAX_ROWS = 500;
 /* ============ 登入狀態 ============ */
 function lsSet(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} }
 let token = lsGet('eink_token') || '';
+let openMode = false;   // 後端設定為免登入時為 true
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   token = t || ''; userName = name || '';
@@ -407,7 +408,8 @@ async function loadItems(){
     return false;
   }
   items = res.items || [];
-  if(res.user) setSession(token, res.user);
+  openMode = !!res.openMode;
+  if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards();
   return true;
 }
@@ -853,7 +855,9 @@ async function doChangePass(){
   if(passForced) loadItems();
 }
 function openAccount(){
-  document.getElementById('accountHint').textContent = userName ? `目前登入：${userName}` : '';
+  document.getElementById('accountHint').textContent = openMode
+    ? `目前為免登入模式，操作者記為「${userName}」` : (userName ? `目前登入：${userName}` : '');
+  document.querySelectorAll('#accountOverlay .mbtns button').forEach((b,i)=>{ b.style.display = (openMode && i!==1) ? 'none' : ''; });
   showOverlay('accountOverlay');
 }
 async function doLogout(){
@@ -885,7 +889,7 @@ document.querySelectorAll('.overlay').forEach(o=>{
 
 /* ============ 啟動 ============ */
 setSession(token, userName);
-if(token) loadItems(); else { document.getElementById('grid').innerHTML=''; showLogin(); }
+loadItems();   // 需要登入時，後端回 AUTH 會自動顯示登入框
 </script>
 </body>
 </html>
