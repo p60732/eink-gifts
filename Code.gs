@@ -114,7 +114,7 @@ function configSheet_(){
 function ensureConfigDefaults_(){
   const sh = configSheet_();
   const keys = sh.getDataRange().getValues().map(r => r[0]);
-  CFG_ = null;
+  clearConfigCache_();
   CONFIG_DEFAULTS.forEach(d => {
     if (keys.indexOf(d[0]) >= 0) return;
     sh.appendRow(d);
@@ -125,22 +125,31 @@ function loginRequired_(){ return getConfig_('需要登入').toUpperCase() === '
 function passwordRequired_(){ return getConfig_('登入需要密碼').toUpperCase() === 'TRUE'; }
 /** 設定每個請求只讀一次（doPost 開頭會清掉） */
 let CFG_ = null;
+const CFG_KEY = 'cfg_v1';
+const DATA_TTL = 120;   // 直接在試算表手動修改時，最多 2 分鐘後網頁才看得到
 function config_(){
   if (!CFG_) {
-    CFG_ = {};
-    configSheet_().getDataRange().getValues().slice(1).forEach(r => { if (r[0] !== '') CFG_[r[0]] = String(r[1] == null ? '' : r[1]).trim(); });
+    const c = CacheService.getScriptCache();
+    const raw = c.get(CFG_KEY);
+    if (raw) CFG_ = JSON.parse(raw);
+    else {
+      CFG_ = {};
+      configSheet_().getDataRange().getValues().slice(1).forEach(r => { if (r[0] !== '') CFG_[r[0]] = String(r[1] == null ? '' : r[1]).trim(); });
+      c.put(CFG_KEY, JSON.stringify(CFG_), DATA_TTL);
+    }
   }
   return CFG_;
 }
+function clearConfigCache_(){ CFG_ = null; CacheService.getScriptCache().remove(CFG_KEY); }
 function getConfig_(key){ return config_()[key] || ''; }
 function setConfig_(key, value){
   const sh = configSheet_();
   const vals = sh.getDataRange().getValues();
   for (let i = 1; i < vals.length; i++) {
-    if (vals[i][0] === key) { sh.getRange(i + 1, 2).setValue(value); CFG_ = null; return; }
+    if (vals[i][0] === key) { sh.getRange(i + 1, 2).setValue(value); clearConfigCache_(); return; }
   }
   sh.appendRow([key, value, '']);
-  CFG_ = null;
+  clearConfigCache_();
 }
 
 function adminsSheet_(){
@@ -194,6 +203,17 @@ function rowsToObjects_(values){
   });
 }
 function readItems_(){ return rowsToObjects_(itemsSheet_().getDataRange().getValues()); }
+/** 讀取用的庫存清單：快取 2 分鐘；網頁上任何寫入後立即清除 */
+const ITEMS_KEY = 'items_v1';
+function readItemsCached_(){
+  const c = CacheService.getScriptCache();
+  const raw = c.get(ITEMS_KEY);
+  if (raw) return JSON.parse(raw);
+  const items = readItems_();
+  const json = JSON.stringify(items);
+  if (json.length < 90000) c.put(ITEMS_KEY, json, DATA_TTL);   // 快取單筆上限 100KB
+  return items;
+}
 
 function findRow_(id){
   const sh = itemsSheet_();
@@ -500,7 +520,7 @@ function applyDelta_(id, delta){
 }
 
 const ACTIONS = {
-  getAll: (s) => ({ items: readItems_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: canManage_(s) }),
+  getAll: (s) => ({ items: readItemsCached_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: canManage_(s) }),
 
   /** 人員清單（不含密碼、初始碼等敏感欄位） */
   listAdmins: (s) => {
@@ -750,12 +770,14 @@ function ensureSchemaOnce_(lock){
 function doPost(e){
   const lock = LockService.getScriptLock();
   CFG_ = null;
+  let writeAction = false;
   try {
     let body;
     try { body = JSON.parse(e.postData.contents); } catch (x) { throw userError_('資料格式錯誤'); }
     const action = String(body.action || '');
     if (action !== 'login' && !Object.prototype.hasOwnProperty.call(ACTIONS, action)) throw userError_('未知的操作');
     const readOnly = READ_ONLY.indexOf(action) >= 0;
+    writeAction = !readOnly && action !== 'login';
     if (!readOnly) lock.waitLock(20000);
     ensureSchemaOnce_(lock);
 
@@ -778,6 +800,7 @@ function doPost(e){
     console.error(err);
     return json_({ error: '操作失敗，請稍後再試' });
   } finally {
+    if (writeAction) { try { CacheService.getScriptCache().remove(ITEMS_KEY); } catch (x) {} }
     if (lock.hasLock()) lock.releaseLock();
   }
 }
