@@ -12,8 +12,10 @@
  *   忘記密碼：清空該列「密碼雜湊」「鹽」→ 再執行 generateInitCodes
  *
  * 登入開關：「設定」分頁的「需要登入」取消勾選 = 免登入（任何知道網址的人都能操作），
- *   此時操作者記為「免登入操作者」欄的名稱。勾選後立即改為需要登入。
+ *   此時操作者記為「免登入操作者」欄的名稱。
  * 密碼開關：「登入需要密碼」取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入。
+ *   打開密碼開關後，先前「只用名稱」的登入會全部失效，需要重新用密碼登入。
+ * 直接在試算表修改設定、人員或庫存時，最多 2 分鐘後網頁才會反映（快取）；從網頁操作則立即生效。
  *
  * 異動記錄為帳本：不可刪除，登打錯誤請用「沖銷」產生反向記錄。
  *
@@ -41,7 +43,7 @@ const LIMITS = {
   passMin: 6, passMax: 64
 };
 const IMG_TYPES = ['image/jpeg','image/png','image/webp'];
-const SESSION_TTL = 8 * 3600;      // 登入有效 8 小時
+const SESSION_TTL = 6 * 3600;      // 登入有效 6 小時（CacheService 上限）
 const FAIL_MAX = 5;                // 連續失敗次數上限
 const FAIL_LOCK = 15 * 60;         // 鎖定 15 分鐘
 const HASH_ROUNDS = 300;
@@ -155,7 +157,6 @@ function configSheet_(){
 function ensureConfigDefaults_(){
   const sh = configSheet_();
   const keys = sh.getDataRange().getValues().map(r => r[0]);
-  clearConfigCache_();
   CONFIG_DEFAULTS.forEach(d => {
     if (keys.indexOf(d[0]) >= 0) return;
     sh.appendRow(d);
@@ -164,33 +165,47 @@ function ensureConfigDefaults_(){
 }
 function loginRequired_(){ return getConfig_('需要登入').toUpperCase() === 'TRUE'; }
 function passwordRequired_(){ return getConfig_('登入需要密碼').toUpperCase() === 'TRUE'; }
+/* ============ 快取 ============ */
+/** 資料世代：每次寫入換一代，所有資料快取的鍵都帶世代，舊世代的快取自然作廢 */
+let GEN_ = null;
+function dataGen_(){
+  if (GEN_ === null) GEN_ = CacheService.getScriptCache().get('dgen') || '0';
+  return GEN_;
+}
+function bumpDataGen_(){
+  GEN_ = Utilities.getUuid().slice(0, 8);
+  CacheService.getScriptCache().put('dgen', GEN_, 21600);
+  CFG_ = null;
+}
+function cacheKey_(base){ return base + '_' + dataGen_(); }
+
 /** 設定每個請求只讀一次（doPost 開頭會清掉） */
 let CFG_ = null;
-const CFG_KEY = 'cfg_v1';
+const CFG_KEY = 'cfg';
 const DATA_TTL = 120;   // 直接在試算表手動修改時，最多 2 分鐘後網頁才看得到
 function config_(){
   if (!CFG_) {
     const c = CacheService.getScriptCache();
-    const raw = c.get(CFG_KEY);
+    const key = cacheKey_(CFG_KEY);
+    const raw = c.get(key);
     if (raw) CFG_ = JSON.parse(raw);
     else {
       CFG_ = {};
       configSheet_().getDataRange().getValues().slice(1).forEach(r => { if (r[0] !== '') CFG_[r[0]] = String(r[1] == null ? '' : r[1]).trim(); });
-      c.put(CFG_KEY, JSON.stringify(CFG_), DATA_TTL);
+      c.put(key, JSON.stringify(CFG_), DATA_TTL);
     }
   }
   return CFG_;
 }
-function clearConfigCache_(){ CFG_ = null; CacheService.getScriptCache().remove(CFG_KEY); }
 function getConfig_(key){ return config_()[key] || ''; }
 function setConfig_(key, value){
   const sh = configSheet_();
   const vals = sh.getDataRange().getValues();
   for (let i = 1; i < vals.length; i++) {
-    if (vals[i][0] === key) { sh.getRange(i + 1, 2).setValue(value); clearConfigCache_(); return; }
+    if (vals[i][0] === key) { sh.getRange(i + 1, 2).setValue(value); bumpDataGen_(); return; }
   }
   sh.appendRow([key, value, '']);
-  clearConfigCache_();
+  bumpDataGen_();
 }
 
 function adminsSheet_(){
@@ -222,7 +237,7 @@ function ensureAdminSchema_(){
     sh.getRange(2, 8, n, 1).setValues(vals.map(r => [String(r[0]).trim() !== '' && r[1] === true]));
   }
   sh.getRange(2, 8, Math.max(n, 1) + 49, 1).insertCheckboxes();
-  clearAdminIndex_();
+  bumpDataGen_();
 }
 
 function imageFolder_(){
@@ -244,18 +259,18 @@ function rowsToObjects_(values){
   });
 }
 function readItems_(){ return rowsToObjects_(itemsSheet_().getDataRange().getValues()); }
-/** 讀取用的庫存清單：快取 2 分鐘；網頁上任何寫入後立即清除 */
-const ITEMS_KEY = 'items_v1';
-const LOGS0_KEY = 'logs0_v1';
-function readItemsCached_(){
+/** 讀取用的快取：鍵帶資料世代，寫入後立即作廢；單筆上限 100KB，太大就不快取 */
+function cached_(base, build){
   const c = CacheService.getScriptCache();
-  const raw = c.get(ITEMS_KEY);
+  const key = cacheKey_(base);
+  const raw = c.get(key);
   if (raw) return JSON.parse(raw);
-  const items = readItems_();
-  const json = JSON.stringify(items);
-  if (json.length < 90000) c.put(ITEMS_KEY, json, DATA_TTL);   // 快取單筆上限 100KB
-  return items;
+  const val = build();
+  const json = JSON.stringify(val);
+  if (json.length < 90000) c.put(key, json, DATA_TTL);
+  return val;
 }
+function readItemsCached_(){ return cached_('items', readItems_); }
 
 function findRow_(id){
   const sh = itemsSheet_();
@@ -266,12 +281,13 @@ function findRow_(id){
   return -1;
 }
 
+/** 下一個品項編號：同時參考庫存與異動記錄，刪除過的編號不會再被使用（避免舊記錄對到新品項） */
 function nextId_(){
   let max = 0;
-  readItems_().forEach(it => {
-    const m = String(it.ID).match(/^G(\d+)$/);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  });
+  const take = v => { const m = String(v).match(/^G(\d+)$/); if (m) max = Math.max(max, parseInt(m[1], 10)); };
+  const ish = itemsSheet_(), lsh = logsSheet_();
+  if (ish.getLastRow() > 1) ish.getRange(2, 1, ish.getLastRow() - 1, 1).getValues().forEach(r => take(r[0]));
+  if (lsh.getLastRow() > 1) lsh.getRange(2, 2, lsh.getLastRow() - 1, 1).getValues().forEach(r => take(r[0]));
   return 'G' + String(max + 1).padStart(3, '0');
 }
 
@@ -368,23 +384,32 @@ function findAdmin_(name){
   return null;
 }
 
-/** 人員權限索引（名稱 → [啟用, 可管理]），快取 60 秒；在網頁上改人員時會立即清除 */
-const ADM_IDX_KEY = 'adm_idx';
-const ADM_IDX_TTL = 60;
+/** 人員權限索引（名稱 → [啟用, 可管理, 登入世代]），快取；在網頁上改人員時立即作廢 */
 function adminIndex_(){
-  const c = CacheService.getScriptCache();
-  const raw = c.get(ADM_IDX_KEY);
-  if (raw) return JSON.parse(raw);
-  const idx = {};
-  readAdmins_().forEach(x => { idx[String(x.r[0]).trim()] = [x.r[1] === true, x.r[7] === true]; });
-  c.put(ADM_IDX_KEY, JSON.stringify(idx), ADM_IDX_TTL);
-  return idx;
+  return cached_('adm', () => {
+    const props = PropertiesService.getScriptProperties().getProperties();
+    const idx = {};
+    readAdmins_().forEach(x => {
+      const n = String(x.r[0]).trim();
+      idx[n] = [x.r[1] === true, x.r[7] === true, Number(props['sg:' + n] || 0)];
+    });
+    return idx;
+  });
 }
-function clearAdminIndex_(){ CacheService.getScriptCache().remove(ADM_IDX_KEY); }
 
-function newSession_(name, mustChange){
+/** 讓某名稱的所有既有登入失效（重設密碼、改密碼、改名、停用時使用） */
+function bumpSessionGen_(name){
+  const p = PropertiesService.getScriptProperties();
+  const k = 'sg:' + name;
+  p.setProperty(k, String(Number(p.getProperty(k) || 0) + 1));
+  bumpDataGen_();
+}
+function sessionGen_(name){ return Number(PropertiesService.getScriptProperties().getProperty('sg:' + name) || 0); }
+
+/** pw：這次登入是否有驗證密碼（密碼模式打開後，沒用密碼的舊登入一律失效） */
+function newSession_(name, mustChange, pw){
   const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  CacheService.getScriptCache().put('s_' + token, JSON.stringify({ n: name, mc: !!mustChange }), SESSION_TTL);
+  CacheService.getScriptCache().put('s_' + token, JSON.stringify({ n: name, mc: !!mustChange, pw: !!pw, g: sessionGen_(name) }), SESSION_TTL);
   return token;
 }
 
@@ -396,8 +421,12 @@ function auth_(token){
   if (!raw) throw userError_('登入已逾時，請重新登入', 'AUTH');
   const s = JSON.parse(raw);
   const a = adminIndex_()[s.n];
-  if (!a || a[0] !== true) { CacheService.getScriptCache().remove('s_' + t); throw userError_('帳號已停用', 'AUTH'); }
-  return { name: s.n, mustChange: s.mc && passwordRequired_(), token: t };
+  const drop = msg => { CacheService.getScriptCache().remove('s_' + t); throw userError_(msg, 'AUTH'); };
+  if (!a || a[0] !== true) drop('帳號已停用');
+  if ((a[2] || 0) !== (s.g || 0)) drop('登入已失效，請重新登入');
+  const needPass = passwordRequired_();
+  if (needPass && !s.pw) drop('現在需要密碼，請重新登入');
+  return { name: s.n, mustChange: s.mc && needPass, token: t };
 }
 
 function login_(body){
@@ -424,7 +453,7 @@ function login_(body){
   }
   cache.remove(failKey);
   adminsSheet_().getRange(a.row, 6).setValue(new Date().toISOString());
-  return { success: true, token: newSession_(name, mustChange), name, mustChange };
+  return { success: true, token: newSession_(name, mustChange, needPass), name, mustChange };
 }
 
 function changePasscode_(s, body){
@@ -440,8 +469,8 @@ function changePasscode_(s, body){
   const salt = Utilities.getUuid();
   const sh = adminsSheet_();
   sh.getRange(a.row, 3, 1, 3).setValues([['', hash_(next, salt), salt]]);
-  CacheService.getScriptCache().remove('s_' + s.token);
-  return { success: true, token: newSession_(s.name, false), name: s.name, mustChange: false };
+  bumpSessionGen_(s.name);   // 其他裝置上的舊登入一併失效
+  return { success: true, token: newSession_(s.name, false, true), name: s.name, mustChange: false };
 }
 
 /* ============ 異動記錄（帳本） ============ */
@@ -607,12 +636,15 @@ const ACTIONS = {
       if (!(enabled && manage) && managers === 0) throw userError_('至少要保留一位可管理人員');
       sh.getRange(t.row, 1, 1, 2).setValues([[ name, enabled ]]);
       sh.getRange(t.row, 7, 1, 2).setValues([[ note, manage ]]);
+      // 改名或停用：舊名稱的登入全部失效
+      if (name !== orig || !enabled) bumpSessionGen_(orig);
     }
-    clearAdminIndex_();
+    // 新名稱（新增或改名）若曾被別人用過，先讓那些舊登入失效，避免被新的人繼承
+    if (!orig || name !== orig) bumpSessionGen_(name);
+    bumpDataGen_();
     const out = { success: true, initCode: code };
     if (orig && orig === s.name && name !== orig) {   // 改自己的名字：換發新的登入
-      CacheService.getScriptCache().remove('s_' + s.token);
-      out.token = newSession_(name, false); out.name = name;
+      out.token = newSession_(name, false, passwordRequired_()); out.name = name;
     }
     return out;
   },
@@ -626,6 +658,7 @@ const ACTIONS = {
     if (!t) throw userError_('找不到人員');
     const code = randomCode_(8);
     adminsSheet_().getRange(t.row, 3, 1, 3).setValues([[ code, '', '' ]]);
+    bumpSessionGen_(name);   // 對方目前的登入立即失效
     return { success: true, initCode: code };
   },
 
@@ -634,13 +667,7 @@ const ACTIONS = {
     // 最常用的「最新 20 筆」有快取；網頁上任何寫入後立即清除
     const isFirst = !b.itemId && !b.fromTs && !b.toTs && !b.offset && (b.limit == null || Number(b.limit) === 20);
     if (!isFirst) return readLogsPage_(b);
-    const c = CacheService.getScriptCache();
-    const raw = c.get(LOGS0_KEY);
-    if (raw) return JSON.parse(raw);
-    const out = readLogsPage_(b);
-    const json = JSON.stringify(out);
-    if (json.length < 90000) c.put(LOGS0_KEY, json, DATA_TTL);
-    return out;
+    return cached_('logs0', () => readLogsPage_(b));
   },
 
   changePasscode: (s, b) => changePasscode_(s, b),
@@ -691,6 +718,10 @@ const ACTIONS = {
     const sh = itemsSheet_();
     const qty = Number(sh.getRange(row, 3).getValue()) || 0;
     if (qty !== 0) throw userError_('庫存還有 ' + qty + '，請先歸零再刪除');
+    const open = openSt_();
+    if (open && stDetails_(String(open['盤點ID'])).some(d => String(d['品項ID']) === id)) {
+      throw userError_('這個品項在進行中的盤點單裡已有實點數量，請先清除該項或完成盤點再刪除');
+    }
     const name = sh.getRange(row, 2).getValue();
     sh.deleteRow(row);
     log_('刪除品項', id, name, 0, 0, '', s.name);
@@ -710,7 +741,7 @@ const ACTIONS = {
   /** 盤點：目前進行中的盤點單（含明細）與最近的歷史 */
   getStocktakes: () => {
     const all = readSt_();
-    const open = all.find(x => x['狀態'] === '進行中') || null;
+    const open = all.find(x => x['狀態'] === '進行中') || null;   // 同 openSt_，但重用已讀的資料
     return { open, details: open ? stDetails_(open['盤點ID']) : [], history: all.filter(x => x['狀態'] !== '進行中').reverse().slice(0, 50) };
   },
 
@@ -745,11 +776,28 @@ const ACTIONS = {
     const vals = sh.getDataRange().getValues();
     let at = -1;
     for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === itemId) { at = i + 1; break; }
+    if (at > 0 && vals[at - 1][9]) throw userError_('這項已經寫入盤點調整，不能再修改');
     if (at > 0) sh.getRange(at, 1, 1, STD_HEADERS.length).setValues([rec]);
     else sh.appendRow(rec);
     const det = stDetails_(id);
     stSheet_().getRange(f.row, 9, 1, 2).setValues([[ det.length, det.filter(d => Number(d['差異']) !== 0).length ]]);
     return { success: true, book, counted, diff: counted - book };
+  },
+
+  /** 清除某品項的實點數量（輸錯想改回「未盤」時用） */
+  clearCount: (s, b) => {
+    const f = requireOpenSt_(b.stId);
+    const id = f.r[0];
+    const itemId = id_(b.itemId);
+    const sh = stdSheet_();
+    const vals = sh.getDataRange().getValues();
+    const hit = [];
+    for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === itemId) hit.push(i);
+    if (hit.some(i => vals[i][9])) throw userError_('這項已經寫入盤點調整，不能清除');
+    hit.reverse().forEach(i => sh.deleteRow(i + 1));   // 由下往上刪，列號才不會跑掉
+    const det = stDetails_(id);
+    stSheet_().getRange(f.row, 9, 1, 2).setValues([[ det.length, det.filter(d => Number(d['差異']) !== 0).length ]]);
+    return { success: true };
   },
 
   /** 完成盤點：先檢查全部，全部可行才一次寫入盤點調整 */
@@ -759,16 +807,18 @@ const ACTIONS = {
     const det = stDetails_(id);
     if (!det.length) throw userError_('還沒有輸入任何實點數量');
     const items = readItems_();
-    const plan = det.filter(d => Number(d['差異']) !== 0).map(d => {
+    // 已有調整記錄ID的列代表先前已寫入過（例如中途出錯），不重複調整
+    const plan = det.filter(d => Number(d['差異']) !== 0 && !d['調整記錄ID']).map(d => {
       const it = items.find(i => String(i.ID) === String(d['品項ID']));
-      if (!it) throw userError_('品項 ' + d['品名'] + ' 已不存在，請重新輸入或取消盤點');
+      if (!it) throw userError_('品項 ' + d['品名'] + ' 已不存在，請先清除該項的實點數量');
       const after = Number(it['數量']) + Number(d['差異']);
       if (after < 0) throw userError_('「' + d['品名'] + '」盤點後會變成負數，請重新確認實點數量');
+      if (after > LIMITS.qtyMax) throw userError_('「' + d['品名'] + '」盤點後數量超過上限');
       return d;
     });
     const sh = stdSheet_();
     const vals = sh.getDataRange().getValues();
-    let total = 0;
+    let total = det.filter(d => d['調整記錄ID']).reduce((n, d) => n + Number(d['差異']), 0);
     plan.forEach(d => {
       const diff = Number(d['差異']);
       const r = applyDelta_(String(d['品項ID']), diff);
@@ -777,7 +827,7 @@ const ACTIONS = {
       for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === String(d['品項ID'])) { sh.getRange(i + 1, 10).setValue(logId); break; }
       total += diff;
     });
-    stSheet_().getRange(f.row, 2, 1, 10).setValues([[ '已完成', f.r[2], f.r[3], new Date().toISOString(), s.name, f.r[6], items.length, det.length, plan.length, total ]]);
+    stSheet_().getRange(f.row, 2, 1, 10).setValues([[ '已完成', f.r[2], f.r[3], new Date().toISOString(), s.name, f.r[6], items.length, det.length, det.filter(d => Number(d['差異']) !== 0).length, total ]]);
     return { success: true, adjusted: plan.length, counted: det.length, total };
   },
 
@@ -812,7 +862,7 @@ function doGet(){
 /* ============ POST ============ */
 /** 只讀取、不寫入的動作：不必排隊等鎖 */
 const READ_ONLY = ['getAll','getLogs','getStocktakes','getStocktakeDetail','listAdmins'];
-const SCHEMA_KEY = 'schema_ok_v2';
+const SCHEMA_KEY = 'schema_ok_v3';
 
 /** 格式檢查（補欄位、補設定列）只在快取過期時做一次 */
 function ensureSchemaOnce_(lock){
@@ -822,12 +872,15 @@ function ensureSchemaOnce_(lock){
   ensureLogSchema_();
   ensureConfigDefaults_();
   ensureAdminSchema_();
+  stSheet_(); stdSheet_();   // 盤點分頁先建好，讀取動作就不必建立工作表
+  SpreadsheetApp.flush();
+  bumpDataGen_();            // 格式有更新：讓之前的快取全部作廢
   c.put(SCHEMA_KEY, '1', 21600);
 }
 
 function doPost(e){
   const lock = LockService.getScriptLock();
-  CFG_ = null;
+  CFG_ = null; GEN_ = null;
   let writeAction = false;
   try {
     let body;
@@ -858,7 +911,10 @@ function doPost(e){
     console.error(err);
     return json_({ error: '操作失敗，請稍後再試' });
   } finally {
-    if (writeAction) { try { CacheService.getScriptCache().removeAll([ITEMS_KEY, LOGS0_KEY]); } catch (x) {} }
-    if (lock.hasLock()) lock.releaseLock();
+    if (lock.hasLock()) {
+      try { SpreadsheetApp.flush(); } catch (x) {}   // 寫入確實落地後才放鎖
+      if (writeAction) { try { bumpDataGen_(); } catch (x) {} }
+      lock.releaseLock();
+    }
   }
 }

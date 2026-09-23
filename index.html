@@ -7,11 +7,9 @@
 <style>
 :root{
   --ink:#0f172a; --ink2:#1e293b; --mid:#64748b; --mute:#94a3b8;
-  --line:#e2e8f0; --soft:#f1f5f9; --bg:#ffffff; --white:#ffffff;
+  --line:#e2e8f0; --soft:#f1f5f9; --bg:#ffffff; 
   --primary:#0f172a; --primary-h:#1e293b;
-  --accent:#0f172a; --accent-bg:#f1f5f9;
   --ok:#16a34a; --ok-bg:#dcfce7;
-  --warn:#d97706; --warn-bg:#fef3c7;
   --danger:#dc2626; --danger-bg:#fee2e2;
   --radius:16px; --shadow:0 1px 2px rgba(15,23,42,.06);
 }
@@ -173,11 +171,10 @@ svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;str
 .strow.diff{border-left:4px solid var(--danger)}
 .strow .sdiff.minus{color:var(--danger)} .strow .sdiff.plus{color:var(--ok)} .strow .sdiff.zero{color:var(--mute)}
 .strow .sstate{font-size:12px;color:var(--ok);width:22px;text-align:center;flex:none}
-.stfoot{position:fixed;left:0;right:0;bottom:0;display:none;gap:12px;padding:14px 22px;background:#fff;border-top:1px solid var(--line);z-index:60}
+.stfoot{position:fixed;left:0;right:0;bottom:0;display:none;justify-content:center;gap:12px;padding:14px 22px;background:#fff;border-top:1px solid var(--line);z-index:60}
 body.st-open .stfoot{display:flex}
 body.st-open .view.on{padding-bottom:100px}
 .stfoot button{flex:1;max-width:400px;padding:13px;border-radius:12px;font-weight:700;font-size:15px}
-.stfoot{justify-content:center}
 .stfoot .cancel{background:#fff;border:1px solid var(--line);color:var(--ink2)}
 .stfoot .save{background:var(--primary);color:#fff}
 .sthist{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
@@ -190,7 +187,6 @@ body.st-open .view.on{padding-bottom:100px}
 .stfilter button{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#fff;border:1px solid var(--line);color:var(--mid)}
 .stfilter button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
 .stintro{color:var(--mid);margin-bottom:18px;line-height:1.8}
-.sthead + .stintro{margin-top:-4px}
 
 /* ---------- Toast / misc ---------- */
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);opacity:0;background:var(--ink);color:#fff;padding:12px 22px;border-radius:999px;font-size:14px;font-weight:600;z-index:100;transition:.3s;pointer-events:none;box-shadow:0 10px 30px rgba(15,23,42,.25);max-width:90vw;text-align:center}
@@ -283,12 +279,12 @@ body.st-open .toast{bottom:96px}
   </section>
 
   <section class="view" id="view-logs">
-    <div class="lfilter" id="logPanel">
-      <select id="logFilterItem" onchange="resetLogLimit()"></select>
+    <div class="lfilter">
+      <select id="logFilterItem" onchange="loadLogs(false)"></select>
       <div class="lfilter-row">
-        <input type="date" id="logFilterFrom" onchange="resetLogLimit()">
+        <input type="date" id="logFilterFrom" onchange="loadLogs(false)">
         <span>～</span>
-        <input type="date" id="logFilterTo" onchange="resetLogLimit()">
+        <input type="date" id="logFilterTo" onchange="loadLogs(false)">
         <button class="hbtn" onclick="clearLogFilter()">清除</button>
       </div>
       <button class="hbtn" onclick="exportLogs()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
@@ -297,7 +293,7 @@ body.st-open .toast{bottom:96px}
   </section>
 
   <section class="view" id="view-st">
-    <div id="stPanel">
+    <div>
       <div class="sthead">
         <h3 id="stTitle">盤點</h3>
         <button class="hbtn" id="stPrintBtn" onclick="printStocktake()"><svg class="ic" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></svg>列印盤點表</button>
@@ -411,7 +407,7 @@ body.st-open .toast{bottom:96px}
       <input type="text" id="loginName" maxlength="20" autocomplete="username" onkeydown="if(event.key==='Enter' && !needPass)doLogin()">
     </div>
     <div class="field" id="loginPassField">
-      <label id="loginPassLabel">密碼（第一次登入請輸入初始碼）</label>
+      <label>密碼（第一次登入請輸入初始碼）</label>
       <input type="password" id="loginPass" maxlength="64" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div class="mbtns">
@@ -465,7 +461,7 @@ body.st-open .toast{bottom:96px}
 <div class="overlay" id="peopleOverlay">
   <div class="modal" style="max-width:620px">
     <h3>人員管理</h3>
-    <div class="hint" id="peopleHint" style="font-size:13px;color:var(--mid);margin:-8px 0 14px;line-height:1.7">
+    <div class="hint" style="font-size:13px;color:var(--mid);margin:-8px 0 14px;line-height:1.7">
       名單內且「啟用」的人才能登入。「可管理」的人可以在這裡新增或調整人員。人員不能刪除，不再使用請取消「啟用」。</div>
     <div id="peopleList"></div>
     <div class="padd">
@@ -497,8 +493,7 @@ const IMPORT_MAX_ROWS = 500;
 function lsSet(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} }
 let token = lsGet('eink_token') || '';
 let openMode = false;   // 後端設定為免登入時為 true
-let needPass = true;    // 登入是否需要密碼（由後端告知）
-let passwordMode = true;
+let needPass = true;    // 登入是否需要密碼（由後端告知：getAll 的 passwordMode 或 AUTH 回應）
 let canManage = false;
 let lastBackup = '';
 let userName = lsGet('eink_user') || '';
@@ -562,13 +557,14 @@ function fmtTime(v){
 
 /* ============ 載入 / 渲染 ============ */
 const ITEMS_CACHE = 'eink_items_cache';
-function saveItemsCache(){ lsSet(ITEMS_CACHE, JSON.stringify({ t: Date.now(), user: userName, items })); }
+function saveItemsCache(){ lsSet(ITEMS_CACHE, JSON.stringify({ t: Date.now(), user: userName, open: openMode, items })); }
 /** 開頁時先顯示上次的庫存（標示同步中），同時向後端要最新資料 */
 function showCachedItems(){
-  if(!token) return false;
   try{
     const c = JSON.parse(lsGet(ITEMS_CACHE) || 'null');
-    if(!c || !Array.isArray(c.items) || c.user !== userName) return false;
+    if(!c || !Array.isArray(c.items)) return false;
+    // 需要登入時只顯示同一位使用者的快取；免登入模式不需要 token
+    if(!(c.open || (token && c.user === userName))) return false;
     items = c.items; renderStats(); renderCards(); setSyncing(true);
     return true;
   }catch(e){ return false; }
@@ -604,7 +600,7 @@ async function loadItems(){
   }
   items = res.items || [];
   openMode = !!res.openMode;
-  passwordMode = res.passwordMode !== false;
+  needPass = res.passwordMode !== false;
   canManage = !!res.canManage;
   lastBackup = res.lastBackup || '';
   if(res.user) setSession(openMode ? '' : token, res.user);
@@ -819,6 +815,9 @@ async function saveItem(){
       const up = await apiPost({action:'uploadImage', data:pendingUpload});
       if(up.error){ showToast(up.error,'error'); return; }
       imgUrl = up.id;
+      // 已上傳：記住檔案 ID，若後面儲存失敗重按也不會再傳一次
+      pendingUpload = '';
+      document.getElementById('fImgUrl').value = up.id;
     }
     const payload = {
       name,
@@ -853,8 +852,8 @@ async function confirmDelete(id, name){
 // 每次只向後端要 20 筆；篩選（品項、日期）也在後端做
 let allLogs = [];
 let logTotal = 0;
+let logOffset = 0;   // 已向後端讀到的位置（與畫面上去重後的筆數分開計）
 let logSeq = 0;
-function openLog(){ switchTab('logs'); }
 const LOG_PAGE = 20;
 function logQuery(){
   const q = {};
@@ -873,7 +872,6 @@ function fillLogItemSelect(){
     items.map(i=>`<option value="${esc(i.ID)}">${esc(i.品名)}</option>`).join('');
   sel.value = items.some(i=>i.ID===prev) ? prev : '';
 }
-function resetLogLimit(){ loadLogs(false); }
 /** reset=true：回到預設（全部品項、不限日期、最新 20 筆）；false：保留篩選重新讀第一頁 */
 async function loadLogs(reset = true){
   if(reset) ['logFilterFrom','logFilterTo'].forEach(id=>{ document.getElementById(id).value = ''; });
@@ -891,16 +889,19 @@ async function loadLogs(reset = true){
     list.firstChild.textContent = res.error;
     return;
   }
-  allLogs = res.logs || []; logTotal = res.total || allLogs.length;
+  allLogs = res.logs || []; logTotal = res.total || allLogs.length; logOffset = allLogs.length;
   renderLogs();
 }
 async function loadMoreLogs(btn){
   btn.disabled = true; btn.textContent = '載入中…';
   const seq = logSeq;
-  const res = await apiPost({action:'getLogs', limit:LOG_PAGE, offset:allLogs.length, ...logQuery()});
+  const res = await apiPost({action:'getLogs', limit:LOG_PAGE, offset:logOffset, ...logQuery()});
   if(seq !== logSeq) return;
   if(res.error){ showToast(res.error,'error'); btn.disabled = false; btn.textContent = '顯示更多'; return; }
-  allLogs = allLogs.concat(res.logs || []); logTotal = res.total || logTotal;
+  // 翻頁期間若有新記錄，位置會往後移一筆，用記錄ID去掉重複
+  const seen = new Set(allLogs.map(l=>l.記錄ID));
+  logOffset += (res.logs || []).length;
+  allLogs = allLogs.concat((res.logs || []).filter(l=>!seen.has(l.記錄ID))); logTotal = res.total || logTotal;
   renderLogs();
 }
 function renderLogs(){
@@ -926,7 +927,7 @@ function renderLogs(){
     </div>`;
   }).join('');
   list.insertAdjacentHTML('beforeend', `<div class="logmore">顯示 ${logs.length} / ${logTotal} 筆${
-    logTotal > logs.length ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
+    logOffset < logTotal ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
   const more = document.getElementById('logMoreBtn');
   if(more) more.onclick = ()=>loadMoreLogs(more);
   list.querySelectorAll('img').forEach(img=>{ img.onerror = ()=>{ img.style.visibility='hidden'; }; });
@@ -996,7 +997,8 @@ async function exportLogs(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '異動記錄');
   XLSX.writeFile(wb, `異動記錄_${todayStr()}.xlsx`);
-  showToast('已匯出異動記錄 Excel','success');
+  if(res.total > logs.length) showToast(`記錄共 ${res.total} 筆，這次只匯出最新 ${logs.length} 筆；請用日期篩選分段匯出`,'error');
+  else showToast('已匯出異動記錄 Excel','success');
 }
 async function importItems(e){
   const f = e.target.files[0];
@@ -1014,7 +1016,7 @@ async function importItems(e){
     const valid = rows.filter(r=> String(r.品名||'').trim());
     if(!valid.length){ showToast('找不到「品名」欄','error'); return; }
     if(valid.length > IMPORT_MAX_ROWS){ showToast(`一次最多匯入 ${IMPORT_MAX_ROWS} 筆`,'error'); return; }
-    if(!confirm(`將匯入 ${valid.length} 筆品項（既有 ID 會更新，其餘新增）。確定？`)) return;
+    if(!confirm(`將匯入 ${valid.length} 筆品項：\n・有對應 ID 的會更新品名、單位、警示、備註、圖片（數量不會變，數量請用拿出／補入／盤點調整）\n・沒有 ID 的會新增，並以「數量」欄當期初數量\n\n確定？`)) return;
     showToast(`匯入中…（0/${valid.length}）`,'success');
     let ok=0, fail=0;
     for(let i=0;i<valid.length;i++){
@@ -1058,13 +1060,11 @@ function configApi(){
 const ST_INTERVAL_DAYS = 182;   // 盤點頻率：約半年一次
 let st = { open:null, details:[], history:[], view:null, viewDetails:[], filter:'all' };
 function stDetailMap(list){ const m={}; (list||[]).forEach(d=>m[String(d.品項ID)]=d); return m; }
-function openStocktake(){ switchTab('st'); }
 async function loadStocktakeTab(){
   document.getElementById('stBody').innerHTML = '<div class="empty">載入中…</div>';
   document.getElementById('stFoot').innerHTML = '';
   await reloadStocktake();
 }
-function closeStocktake(){ st.view = null; switchTab('items'); loadItems(); }
 async function reloadStocktake(){
   const res = await apiPost({action:'getStocktakes'});
   if(res.error){ document.getElementById('stBody').innerHTML = ''; showToast(res.error,'error'); return; }
@@ -1140,7 +1140,7 @@ function renderStocktake(){
       <button data-f="all" class="${st.filter==='all'?'on':''}">全部</button>
       <button data-f="todo" class="${st.filter==='todo'?'on':''}">未盤 ${items.length-counted}</button>
       <button data-f="diff" class="${st.filter==='diff'?'on':''}">有差異 ${diffs}</button></div>
-    <div id="stList">${list.map(it=>{
+    <div>${list.map(it=>{
       const d = map[it.ID]; const src = imgSrc(it.圖片);
       const cls = d ? (Number(d.差異)?'diff':'done') : '';
       return `<div class="strow ${cls}" data-id="${esc(it.ID)}">
@@ -1170,9 +1170,20 @@ async function startStocktake(){
   st.filter = 'all';
   await reloadStocktake();
 }
+/** 清空輸入框＝把這項改回「未盤」 */
+async function clearCount(itemId, inp){
+  if(!st.details.some(d=>String(d.品項ID)===itemId)) return;
+  const row = inp.closest('.strow'); const state = row.querySelector('.sstate');
+  state.textContent = '…';
+  const res = await apiPost({action:'clearCount', stId:st.open.盤點ID, itemId});
+  if(res.error){ state.textContent = '!'; showToast(res.error,'error'); return; }
+  st.details = st.details.filter(d=>String(d.品項ID)!==itemId);
+  renderStocktake();
+  showToast('已清除這項的實點數量','success');
+}
 async function saveCount(itemId, inp){
   const v = inp.value.trim();
-  if(v===''){ return; }
+  if(v===''){ return clearCount(itemId, inp); }
   const n = Number(v);
   if(!Number.isInteger(n) || n<0){ showToast('實點數量需為 0 以上的整數','error'); return; }
   const row = inp.closest('.strow'); const state = row.querySelector('.sstate');
@@ -1315,7 +1326,8 @@ async function addPerson(){
   await reloadPeople();
 }
 async function resetPerson(p){
-  if(!confirm(`重設「${p.name}」的密碼？\n舊密碼會失效，並產生新的一次性初始碼。`)) return;
+  const self = p.name === people.me;
+  if(!confirm(`重設「${p.name}」的密碼？\n舊密碼會失效，對方目前的登入會立即登出，並產生新的一次性初始碼。${self?'\n\n這是你自己的帳號：重設後你也會被登出，需用新的初始碼重新登入。':''}`)) return;
   const res = await apiPost({action:'resetAdminPasscode', name:p.name});
   if(res.error){ showToast(res.error,'error'); return; }
   showInitCode(p.name, res.initCode);
@@ -1377,7 +1389,7 @@ function openAccount(){
     ? `目前為免登入模式，操作者記為「${userName}」` : (userName ? `目前登入：${userName}` : '');
   const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
   show('accPeople', !openMode && canManage);
-  show('accPass', !openMode && passwordMode);
+  show('accPass', !openMode && needPass);
   show('accApi', !openMode && canManage);   // 後端網址只給可管理人員
   // 備份狀態（只給可管理人員看）：超過 8 天沒備份就提醒
   const bk = document.getElementById('accBackup');
