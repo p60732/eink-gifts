@@ -505,15 +505,28 @@ function setSession(t, name){
 }
 
 /* ============ API 封裝（全部用 POST，token 不放網址） ============ */
-async function apiPost(body){
-  let res;
+const READ_ACTIONS = ['getAll','getLogs','getStocktakes','getStocktakeDetail','listAdmins'];
+/** 單次請求；超過 ms 毫秒就放棄（Google 偶爾會卡住連線） */
+async function postOnce(payload, ms){
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), ms);
   try{
     // 不帶 Content-Type，避免觸發 CORS 預檢（GAS 仍可讀 e.postData.contents）
-    const r = await fetch(API_URL,{method:'POST',body:JSON.stringify({...body, token})});
-    res = await r.json();
+    const r = await fetch(API_URL,{method:'POST',body:payload,signal:ctl.signal});
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+async function apiPost(body){
+  let res;
+  const payload = JSON.stringify({...body, token});
+  const isRead = READ_ACTIONS.includes(body.action);
+  try{
+    // 讀取：15 秒沒回應就自動重試一次；寫入不重試，避免重複登記
+    try{ res = await postOnce(payload, isRead ? 15000 : 45000); }
+    catch(e){ if(!isRead) throw e; res = await postOnce(payload, 20000); }
   }catch(e){
     console.warn(e);
-    return { error:'連線失敗，請檢查網路後重試' };
+    return { error: isRead ? '連線失敗，請檢查網路後重試' : '連線逾時，請重新整理確認是否已完成，再決定是否重做' };
   }
   if(res && res.code==='AUTH'){
     if(res.password===false) needPass = false; else if(res.password===true) needPass = true;
