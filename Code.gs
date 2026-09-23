@@ -37,33 +37,6 @@ function initSheets(){
   configSheet_();
 }
 
-/* ============ 圖片搬家：把 GitHub images/ 的舊圖搬進雲端硬碟（僅限編輯器執行，可重複執行） ============ */
-function migrateImagesToDrive(){
-  const OLD_BASE = 'https://p60732.github.io/eink-gifts/';
-  const sh = itemsSheet_();
-  const last = sh.getLastRow();
-  if (last < 2) return;
-  const range = sh.getRange(2, 8, last - 1, 1);
-  const vals = range.getValues();
-  const folder = imageFolder_();
-  let moved = 0, failed = 0;
-  vals.forEach((r, i) => {
-    const v = String(r[0] || '');
-    if (!/^images\//.test(v)) return;
-    try {
-      const res = UrlFetchApp.fetch(OLD_BASE + v, { muteHttpExceptions: true });
-      if (res.getResponseCode() !== 200) { failed++; return; }
-      const blob = res.getBlob().setName(v.replace(/^images\//, ''));
-      const file = folder.createFile(blob);
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      vals[i][0] = file.getId();
-      moved++;
-    } catch (err) { console.error(err); failed++; }
-  });
-  range.setValues(vals);
-  console.log('搬移完成：成功 ' + moved + '，失敗 ' + failed);
-}
-
 /* ============ 共用工具 ============ */
 function ss_(){ return SpreadsheetApp.getActiveSpreadsheet(); }
 function itemsSheet_(){ return ss_().getSheetByName(SHEET_ITEMS); }
