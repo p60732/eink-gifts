@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>E Ink 贈品庫存管理</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --accent:#a87c72; --accent-bg:#f3ede9;
@@ -17,6 +17,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
 button{font-family:inherit;cursor:pointer;border:none;background:none}
+button:disabled{opacity:.6;cursor:default}
 input,select,textarea{font-family:inherit;font-size:14px}
 
 /* Header */
@@ -120,7 +121,10 @@ header .hbtn:hover{filter:brightness(.97)}
 .toast.success{background:var(--ok)}
 .toast.error{background:var(--danger)}
 
-.empty{text-align:center;color:var(--mid);padding:60px 20px}
+.empty{text-align:center;color:var(--mid);padding:60px 20px;grid-column:1/-1}
+.errbox{grid-column:1/-1;text-align:center;background:var(--danger-bg);color:var(--danger);border-radius:12px;padding:40px 20px}
+.errbox b{display:block;font-size:16px;margin-bottom:6px}
+.errbox button{margin-top:14px;padding:9px 18px;border-radius:7px;background:var(--danger);color:#fff;font-weight:700}
 </style>
 </head>
 <body>
@@ -138,7 +142,7 @@ header .hbtn:hover{filter:brightness(.97)}
 </header>
 
 <div class="stats" id="stats"></div>
-<div class="grid" id="grid"></div>
+<div class="grid" id="grid"><div class="empty">載入中…</div></div>
 
 <div class="fab">
   <button class="dispense" onclick="openDispenseModal()">📤 拿出贈品</button>
@@ -164,11 +168,11 @@ header .hbtn:hover{filter:brightness(.97)}
     </div>
     <div class="field">
       <label>備註（發給誰 / 活動名）</label>
-      <input type="text" id="dispenseNote" placeholder="選填">
+      <input type="text" id="dispenseNote" placeholder="選填" maxlength="300">
     </div>
     <div class="field">
       <label>操作者</label>
-      <input type="text" id="dispenseOperator" placeholder="選填">
+      <input type="text" id="dispenseOperator" placeholder="選填" maxlength="30">
     </div>
     <div class="mbtns">
       <button class="cancel" onclick="closeOverlay('dispenseOverlay')">取消</button>
@@ -195,11 +199,11 @@ header .hbtn:hover{filter:brightness(.97)}
     </div>
     <div class="field">
       <label>備註（進貨單號 / 來源）</label>
-      <input type="text" id="restockNote" placeholder="選填">
+      <input type="text" id="restockNote" placeholder="選填" maxlength="300">
     </div>
     <div class="field">
       <label>操作者</label>
-      <input type="text" id="restockOperator" placeholder="選填">
+      <input type="text" id="restockOperator" placeholder="選填" maxlength="30">
     </div>
     <div class="mbtns">
       <button class="cancel" onclick="closeOverlay('restockOverlay')">取消</button>
@@ -214,26 +218,26 @@ header .hbtn:hover{filter:brightness(.97)}
     <h3 id="itemModalTitle">新增品項</h3>
     <div class="field">
       <label>品名</label>
-      <input type="text" id="fName">
+      <input type="text" id="fName" maxlength="50">
     </div>
     <div class="row2">
-      <div class="field"><label>數量</label><input type="number" id="fQty" value="0"></div>
-      <div class="field"><label>單位</label><input type="text" id="fUnit" value="個"></div>
+      <div class="field"><label>數量</label><input type="number" id="fQty" value="0" min="0"></div>
+      <div class="field"><label>單位</label><input type="text" id="fUnit" value="個" maxlength="10"></div>
     </div>
     <div class="field">
       <label>低庫存警示（0 = 不警示）</label>
-      <input type="number" id="fMinAlert" value="0">
+      <input type="number" id="fMinAlert" value="0" min="0">
     </div>
     <div class="field">
       <label>備註</label>
-      <textarea id="fNote"></textarea>
+      <textarea id="fNote" maxlength="300"></textarea>
     </div>
     <div class="field">
       <label>圖片網址</label>
-      <input type="text" id="fImgUrl" placeholder="https://… 或下方上傳" oninput="onImgUrlInput()">
+      <input type="text" id="fImgUrl" placeholder="https://… 或下方上傳" oninput="onImgUrlInput()" maxlength="300">
     </div>
     <div class="field">
-      <label>或上傳本地圖片</label>
+      <label>或上傳本地圖片（會自動壓縮）</label>
       <input type="file" id="fImgFile" accept="image/*" onchange="onImgFile(event)">
     </div>
     <div class="preview" id="imgPreviewBox" style="display:none">
@@ -272,136 +276,133 @@ header .hbtn:hover{filter:brightness(.97)}
 
 <script>
 /* ============ 狀態 ============ */
+// 頁面不內嵌任何庫存資料，一律由後端取得
 let items = [];
 let editingId = null;
-let pendingImg = '';
-// 預設連到此專案的 Google Apps Script 後端；localStorage 可覆寫（設定按鈕）
+let pendingImg = '';        // 預覽用（網址或壓縮後的 data URL）
+let pendingUpload = '';     // 待上傳的壓縮圖片（data URL）
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbySMDhdkdVjhx9bnbWj1Dw5pNwIHH57oEFpdQELBeUEuC_TvKNYeKhxzsG-loUw8972/exec';
-const API_URL = localStorage.getItem('eink_api_url') || DEFAULT_API_URL;
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+const API_URL = lsGet('eink_api_url') || DEFAULT_API_URL;
+const IMG_MAX_PX = 800;
+const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+const IMPORT_MAX_ROWS = 500;
 
-/* ============ Mock 資料 ============ */
-const MOCK_ITEMS = [
-  { ID:"G001", 品名:"便當袋",     數量:400, 單位:"個", 低庫存警示:50, 備註:"Love E Ink 印花款", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G001.jpg" },
-  { ID:"G002", 品名:"鋼杯",       數量:254, 單位:"個", 低庫存警示:30, 備註:"", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G002.jpg" },
-  { ID:"G003", 品名:"拉鏈袋",     數量:210, 單位:"個", 低庫存警示:30, 備註:"網格款 We Make Surfaces Smart and Green", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G003.jpg" },
-  { ID:"G004", 品名:"咖啡渣杯",   數量:12,  單位:"個", 低庫存警示:10, 備註:"咖啡渣＋竹纖維製，符合美標FDA/歐標LFGB", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G004.jpg" },
-  { ID:"G005", 品名:"飲料袋",     數量:160, 單位:"個", 低庫存警示:20, 備註:"紅色提把帆布", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G005.jpg" },
-  { ID:"G006", 品名:"行李箱綁帶", 數量:616, 單位:"個", 低庫存警示:50, 備註:"紅白魔鬼氈捲裝", 最後更新:"2026-06-18T09:00:00.000Z", 圖片:"images/G006.jpg" },
-];
-let MOCK_LOGS = [];
-
-/* ============ API 封裝（mock fallback）============ */
+/* ============ API 封裝 ============ */
 async function apiGet(params){
-  if(!API_URL){
-    if(params.action==='getAll') return { items: JSON.parse(JSON.stringify(MOCK_ITEMS)) };
-    if(params.action==='getLogs'){
-      let logs = MOCK_LOGS;
-      if(params.itemId) logs = logs.filter(l=>l.品項ID===params.itemId);
-      return { logs: logs.slice(0,100) };
-    }
-    return {};
+  try{
+    const qs = new URLSearchParams(params).toString();
+    const r = await fetch(API_URL+'?'+qs);
+    return await r.json();
+  }catch(e){
+    console.warn(e);
+    return { error:'連線失敗，請檢查網路後重試' };
   }
-  const qs = new URLSearchParams(params).toString();
-  const r = await fetch(API_URL+'?'+qs);
-  return r.json();
 }
 async function apiPost(body){
-  if(!API_URL) return mockPost(body);
-  // 不帶 Content-Type，避免觸發 CORS 預檢（GAS 仍可讀 e.postData.contents）
-  const r = await fetch(API_URL,{method:'POST',body:JSON.stringify(body)});
-  return r.json();
+  try{
+    // 不帶 Content-Type，避免觸發 CORS 預檢（GAS 仍可讀 e.postData.contents）
+    const r = await fetch(API_URL,{method:'POST',body:JSON.stringify(body)});
+    return await r.json();
+  }catch(e){
+    console.warn(e);
+    return { error:'連線失敗，請檢查網路後重試' };
+  }
 }
-function mockPost(body){
-  const now = new Date().toISOString();
-  if(body.action==='addItem'){
-    const id = 'G'+String(Date.now()).slice(-6);
-    MOCK_ITEMS.push({ ID:id, 品名:body.name, 數量:+body.qty, 單位:body.unit, 低庫存警示:+body.minAlert, 備註:body.note, 最後更新:now, 圖片:body.imgUrl });
-    return { success:true, id };
-  }
-  if(body.action==='updateItem'){
-    const it = MOCK_ITEMS.find(i=>i.ID===body.id);
-    if(it){ Object.assign(it,{品名:body.name,數量:+body.qty,單位:body.unit,低庫存警示:+body.minAlert,備註:body.note,最後更新:now,圖片:body.imgUrl}); }
-    return { success:true };
-  }
-  if(body.action==='deleteItem'){
-    const i = MOCK_ITEMS.findIndex(i=>i.ID===body.id);
-    if(i>=0) MOCK_ITEMS.splice(i,1);
-    return { success:true };
-  }
-  if(body.action==='adjustQty'){
-    const it = MOCK_ITEMS.find(i=>i.ID===body.id);
-    if(!it) return { error:'找不到品項' };
-    const newQty = it.數量 + (+body.delta);
-    it.數量 = newQty; it.最後更新 = now;
-    MOCK_LOGS.unshift({ 時間:now, 品項ID:it.ID, 品名:it.品名, 變動量:+body.delta, 變動後數量:newQty, 備註:body.note||'', 操作者:body.operator||'' });
-    return { success:true, newQty };
-  }
-  if(body.action==='deleteLog'){
-    const i = MOCK_LOGS.findIndex(l=>String(l.時間)===String(body.time));
-    if(i>=0) MOCK_LOGS.splice(i,1);
-    return { success:true };
-  }
-  return { error:'未知動作' };
+
+/* ============ 工具 ============ */
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+/** 圖片欄 → 可顯示的網址：雲端硬碟檔案 ID、https 網址、舊的 images/ 路徑 */
+function imgSrc(v){
+  const s = String(v ?? '').trim();
+  if(!s) return '';
+  if(/^https:\/\//.test(s)) return s;
+  if(/^images\/[\w.-]+$/.test(s)) return s;
+  if(/^[\w-]{20,}$/.test(s)) return 'https://drive.google.com/thumbnail?id='+encodeURIComponent(s)+'&sz=w800';
+  if(/^data:image\//.test(s)) return s;
+  return '';
+}
+function fmtTime(v){
+  const t = new Date(v);
+  if(isNaN(t)) return '';
+  return `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
 }
 
 /* ============ 載入 / 渲染 ============ */
 async function loadItems(){
-  try{
-    const res = await apiGet({action:'getAll'});
-    if(res.error) throw new Error(res.error);
-    items = res.items || [];
-    renderStats(); renderCards();
-  }catch(e){
-    // API 失敗時自動回退 mock，確保畫面一定有資料
-    console.warn('載入失敗，回退 mock 資料：', e.message);
-    items = JSON.parse(JSON.stringify(MOCK_ITEMS));
-    renderStats(); renderCards();
-    if(API_URL) showToast('API 連線失敗，已顯示預覽資料','error');
+  const res = await apiGet({action:'getAll'});
+  if(res.error){
+    // 不回退假資料：顯示錯誤，避免照著過期數字發放
+    items = [];
+    renderStats();
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'errbox';
+    box.innerHTML = '<b>無法載入庫存資料</b><div></div><button>重新載入</button>';
+    box.querySelector('div').textContent = res.error;
+    box.querySelector('button').onclick = ()=>{ grid.innerHTML='<div class="empty">載入中…</div>'; loadItems(); };
+    grid.appendChild(box);
+    return false;
   }
+  items = res.items || [];
+  renderStats(); renderCards();
+  return true;
 }
 function isLow(it){ return it.低庫存警示>0 && it.數量<=it.低庫存警示; }
 
 function renderStats(){
   const lowCount = items.filter(isLow).length;
-  let last = items.reduce((m,i)=> i.最後更新>m ? i.最後更新 : m, '');
+  let last = items.reduce((m,i)=> String(i.最後更新)>m ? String(i.最後更新) : m, '');
   let t = last ? new Date(last) : null;
-  const hhmm = t ? String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0') : '—';
+  const hhmm = t && !isNaN(t) ? String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0') : '—';
   document.getElementById('stats').innerHTML = `
     <div class="stat"><span class="label">品項總數</span><span class="value">${items.length}</span></div>
     <div class="stat low"><span class="label">低庫存警示</span><span class="value">${lowCount}</span></div>
-    <div class="stat"><span class="label">最後更新</span><span class="value">${hhmm}</span></div>`;
+    <div class="stat"><span class="label">最後更新</span><span class="value">${esc(hhmm)}</span></div>`;
 }
 function renderCards(){
   const q = document.getElementById('search').value.trim().toLowerCase();
-  const list = items.filter(i=> i.品名.toLowerCase().includes(q));
+  const list = items.filter(i=> String(i.品名).toLowerCase().includes(q));
   const grid = document.getElementById('grid');
   if(!list.length){ grid.innerHTML = '<div class="empty">沒有符合的品項</div>'; return; }
   grid.innerHTML = '';
   list.forEach(it=> grid.appendChild(buildCard(it)));
 }
-function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function buildCard(it){
   const low = isLow(it);
   const div = document.createElement('div');
   div.className = 'card'+(low?' low':'');
-  const t = it.最後更新 ? new Date(it.最後更新) : null;
-  const timeStr = t ? `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}` : '';
+  const src = imgSrc(it.圖片);
   div.innerHTML = `
-    <div class="img">${it.圖片?`<img src="${esc(it.圖片)}" alt="" onerror="this.style.display='none'">`:''}</div>
+    <div class="img">${src?`<img src="${esc(src)}" alt="" loading="lazy">`:''}</div>
     <div class="body">
       <div class="name">${esc(it.品名)}</div>
       ${low?'<span class="lowtag">⚠ 低庫存</span>':''}
-      <div class="qtyrow"><span class="qty">${it.數量}</span><span class="unit">${esc(it.單位)}</span></div>
+      <div class="qtyrow"><span class="qty">${esc(it.數量)}</span><span class="unit">${esc(it.單位)}</span></div>
       <div class="note">${esc(it.備註)}</div>
-      <div class="meta">更新：${timeStr}</div>
+      <div class="meta">更新：${esc(fmtTime(it.最後更新))}</div>
     </div>
     <div class="actions">
       <button class="edit">編輯</button>
       <button class="del">刪除</button>
     </div>`;
+  const img = div.querySelector('img');
+  if(img) img.onerror = ()=>{ img.style.display='none'; };
   div.querySelector('.edit').onclick = ()=>openItemModal(it);
   div.querySelector('.del').onclick = ()=>confirmDelete(it.ID, it.品名);
   return div;
+}
+function fillItemSelect(sel){
+  sel.innerHTML = '<option value="">— 請選擇 —</option>' +
+    items.map(i=>`<option value="${esc(i.ID)}">${esc(i.品名)}（${esc(i.數量)}${esc(i.單位)}）</option>`).join('');
+}
+function setPreviewImg(el, v){
+  const src = imgSrc(v);
+  el.style.visibility = src ? 'visible' : 'hidden';
+  el.src = src;
 }
 
 /* ============ 調整數量 ============ */
@@ -414,9 +415,7 @@ async function quickAdjust(id, delta, note, operator){
 
 /* ============ 拿出贈品 ============ */
 function openDispenseModal(){
-  const sel = document.getElementById('dispenseSelect');
-  sel.innerHTML = '<option value="">— 請選擇 —</option>' +
-    items.map(i=>`<option value="${i.ID}">${esc(i.品名)}（${i.數量}${esc(i.單位)}）</option>`).join('');
+  fillItemSelect(document.getElementById('dispenseSelect'));
   document.getElementById('dispensePreview').style.display='none';
   document.getElementById('dispenseQty').value = 1;
   document.getElementById('dispenseNote').value = '';
@@ -429,7 +428,7 @@ function onDispenseSelect(){
   const box = document.getElementById('dispensePreview');
   if(!it){ box.style.display='none'; return; }
   box.style.display='flex';
-  document.getElementById('dpImg').src = it.圖片||'';
+  setPreviewImg(document.getElementById('dpImg'), it.圖片);
   document.getElementById('dpStock').textContent = it.數量;
 }
 async function doDispense(){
@@ -444,17 +443,15 @@ async function doDispense(){
   // 二次確認，避免手滑連續拿出
   if(!confirm(`確定拿出「${it.品名}」${qty}${it.單位}？\n拿出後剩 ${it.數量 - qty}${it.單位}`)) return;
   const btn = document.querySelector('#dispenseOverlay .save');
-  if(btn){ btn.disabled = true; btn.textContent = '處理中…'; }
+  btn.disabled = true; btn.textContent = '處理中…';
   const newQty = await quickAdjust(id, -qty, note, operator);
-  if(btn){ btn.disabled = false; btn.textContent = '確認拿出'; }
+  btn.disabled = false; btn.textContent = '確認拿出';
   if(newQty!==null){ showToast(`已拿出 ${qty}${it.單位}，剩 ${newQty}`,'success'); closeOverlay('dispenseOverlay'); }
 }
 
 /* ============ 補入庫存 ============ */
 function openRestockModal(){
-  const sel = document.getElementById('restockSelect');
-  sel.innerHTML = '<option value="">— 請選擇 —</option>' +
-    items.map(i=>`<option value="${i.ID}">${esc(i.品名)}（${i.數量}${esc(i.單位)}）</option>`).join('');
+  fillItemSelect(document.getElementById('restockSelect'));
   document.getElementById('restockPreview').style.display='none';
   document.getElementById('restockQty').value = 1;
   document.getElementById('restockNote').value = '';
@@ -467,7 +464,7 @@ function onRestockSelect(){
   const box = document.getElementById('restockPreview');
   if(!it){ box.style.display='none'; return; }
   box.style.display='flex';
-  document.getElementById('rsImg').src = it.圖片||'';
+  setPreviewImg(document.getElementById('rsImg'), it.圖片);
   document.getElementById('rsStock').textContent = it.數量;
 }
 async function doRestock(){
@@ -478,62 +475,99 @@ async function doRestock(){
   if(!qty || qty<=0){ showToast('請輸入有效數量','error'); return; }
   const note = document.getElementById('restockNote').value;
   const operator = document.getElementById('restockOperator').value;
+  const btn = document.querySelector('#restockOverlay .save');
+  btn.disabled = true; btn.textContent = '處理中…';
   const newQty = await quickAdjust(id, qty, note, operator);
+  btn.disabled = false; btn.textContent = '確認補入';
   if(newQty!==null){ showToast(`已補入 ${qty}${it.單位}，共 ${newQty}`,'success'); closeOverlay('restockOverlay'); }
 }
 
 /* ============ 新增 / 編輯 ============ */
 function openItemModal(item){
   editingId = item ? item.ID : null;
-  pendingImg = item ? (item.圖片||'') : '';
+  pendingUpload = '';
+  pendingImg = item ? String(item.圖片||'') : '';
   document.getElementById('itemModalTitle').textContent = item?'編輯品項':'新增品項';
   document.getElementById('fName').value = item?item.品名:'';
   document.getElementById('fQty').value = item?item.數量:0;
   document.getElementById('fUnit').value = item?item.單位:'個';
   document.getElementById('fMinAlert').value = item?item.低庫存警示:0;
   document.getElementById('fNote').value = item?item.備註:'';
-  document.getElementById('fImgUrl').value = item?(item.圖片||''):'';
+  document.getElementById('fImgUrl').value = pendingImg;
   document.getElementById('fImgFile').value = '';
   updateImgPreview();
   showOverlay('itemOverlay');
 }
 function onImgUrlInput(){
+  pendingUpload = '';
   pendingImg = document.getElementById('fImgUrl').value.trim();
   updateImgPreview();
 }
-function onImgFile(e){
+/** 讀取圖片並壓縮成最長邊 800px 的 JPEG */
+function compressImage(file){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      const scale = Math.min(1, IMG_MAX_PX / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('無法讀取這張圖片')); };
+    img.src = url;
+  });
+}
+async function onImgFile(e){
   const f = e.target.files[0];
   if(!f) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{ pendingImg = reader.result; document.getElementById('fImgUrl').value=''; updateImgPreview(); };
-  reader.readAsDataURL(f);
+  try{
+    pendingUpload = await compressImage(f);
+    pendingImg = pendingUpload;
+    document.getElementById('fImgUrl').value = '';
+    updateImgPreview();
+  }catch(err){ showToast(err.message,'error'); }
 }
 function updateImgPreview(){
   const box = document.getElementById('imgPreviewBox');
-  if(pendingImg){ box.style.display='flex'; document.getElementById('imgPreview').src = pendingImg; }
+  const src = imgSrc(pendingImg);
+  if(src){ box.style.display='flex'; document.getElementById('imgPreview').src = src; }
   else box.style.display='none';
 }
 async function saveItem(){
   const name = document.getElementById('fName').value.trim();
   if(!name){ showToast('請輸入品名','error'); return; }
-  // 網址優先於 base64
-  const url = document.getElementById('fImgUrl').value.trim();
-  const imgUrl = url || pendingImg;
-  const payload = {
-    name,
-    qty: document.getElementById('fQty').value,
-    unit: document.getElementById('fUnit').value.trim()||'個',
-    minAlert: document.getElementById('fMinAlert').value,
-    note: document.getElementById('fNote').value,
-    imgUrl
-  };
-  let res;
-  if(editingId){ res = await apiPost({action:'updateItem', id:editingId, ...payload}); }
-  else { res = await apiPost({action:'addItem', ...payload}); }
-  if(res.error){ showToast(res.error,'error'); return; }
-  showToast(editingId?'已更新':'已新增','success');
-  closeOverlay('itemOverlay');
-  await loadItems();
+  const btn = document.querySelector('#itemOverlay .save');
+  btn.disabled = true; btn.textContent = '儲存中…';
+  try{
+    let imgUrl = document.getElementById('fImgUrl').value.trim();
+    if(pendingUpload){
+      const up = await apiPost({action:'uploadImage', data:pendingUpload});
+      if(up.error){ showToast(up.error,'error'); return; }
+      imgUrl = up.id;
+    }
+    const payload = {
+      name,
+      qty: document.getElementById('fQty').value,
+      unit: document.getElementById('fUnit').value.trim()||'個',
+      minAlert: document.getElementById('fMinAlert').value,
+      note: document.getElementById('fNote').value,
+      imgUrl
+    };
+    const res = editingId
+      ? await apiPost({action:'updateItem', id:editingId, ...payload})
+      : await apiPost({action:'addItem', ...payload});
+    if(res.error){ showToast(res.error,'error'); return; }
+    showToast(editingId?'已更新':'已新增','success');
+    closeOverlay('itemOverlay');
+    await loadItems();
+  }finally{
+    btn.disabled = false; btn.textContent = '儲存';
+  }
 }
 async function confirmDelete(id, name){
   if(!confirm(`確定刪除「${name}」？`)) return;
@@ -547,14 +581,22 @@ async function confirmDelete(id, name){
 let allLogs = [];
 async function openLog(){
   document.getElementById('logPanel').classList.add('show');
+  document.getElementById('logList').innerHTML = '<div class="empty">載入中…</div>';
   const res = await apiGet({action:'getLogs'});
+  if(res.error){
+    allLogs = [];
+    const list = document.getElementById('logList');
+    list.innerHTML = '<div class="empty"></div>';
+    list.firstChild.textContent = res.error;
+    return;
+  }
   allLogs = res.logs || [];
   // 填入品項下拉（只含有記錄的品項）
   const sel = document.getElementById('logFilterItem');
   const prev = sel.value;
-  const ids = [...new Set(allLogs.map(l=>l.品項ID))];
+  const ids = [...new Set(allLogs.map(l=>String(l.品項ID)))];
   sel.innerHTML = '<option value="">全部品項</option>' +
-    ids.map(id=>{ const it = items.find(i=>i.ID===id); const nm = it?it.品名:(allLogs.find(l=>l.品項ID===id)||{}).品名||id; return `<option value="${id}">${esc(nm)}</option>`; }).join('');
+    ids.map(id=>{ const it = items.find(i=>i.ID===id); const nm = it?it.品名:(allLogs.find(l=>String(l.品項ID)===id)||{}).品名||id; return `<option value="${esc(id)}">${esc(nm)}</option>`; }).join('');
   sel.value = prev;
   renderLogs();
 }
@@ -574,28 +616,32 @@ function renderLogs(){
   const logs = filteredLogs();
   const list = document.getElementById('logList');
   if(!logs.length){ list.innerHTML = '<div class="empty">沒有符合的記錄</div>'; return; }
-  list.innerHTML = logs.map(l=>{
-    const it = items.find(i=>i.ID===l.品項ID);
-    const img = it&&it.圖片 ? `<img src="${esc(it.圖片)}" onerror="this.style.visibility='hidden'">` : '<img>';
-    const t = new Date(l.時間);
-    const ts = `${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
-    const plus = l.變動量>=0;
+  list.innerHTML = logs.map((l, idx)=>{
+    const it = items.find(i=>i.ID===String(l.品項ID));
+    const src = it ? imgSrc(it.圖片) : '';
+    const img = src ? `<img src="${esc(src)}" alt="" loading="lazy">` : '<img alt="" style="visibility:hidden">';
+    const d = Number(l.變動量)||0;
+    const plus = d>=0;
     return `<div class="logitem">${img}
       <div class="linfo">
         <div class="lname">${esc(l.品名)}</div>
         <div class="lnote">${esc(l.備註)||'—'}${l.操作者?' · '+esc(l.操作者):''}</div>
-        <div class="ltime">${ts} · 後 ${l.變動後數量}</div>
+        <div class="ltime">${esc(fmtTime(l.時間))} · 後 ${esc(l.變動後數量)}</div>
       </div>
-      <div class="ldelta ${plus?'plus':'minus'}">${plus?'+':''}${l.變動量}</div>
-      <button class="ldel" title="刪除此記錄" onclick="deleteLogEntry('${l.時間}', this)">✕</button>
+      <div class="ldelta ${plus?'plus':'minus'}">${plus?'+':''}${d}</div>
+      <button class="ldel" title="刪除此記錄" data-idx="${idx}">✕</button>
     </div>`;
   }).join('');
+  list.querySelectorAll('img').forEach(img=>{ img.onerror = ()=>{ img.style.visibility='hidden'; }; });
+  list.querySelectorAll('.ldel').forEach(btn=>{
+    btn.onclick = ()=>deleteLogEntry(logs[+btn.dataset.idx].時間, btn);
+  });
 }
 async function deleteLogEntry(time, btn){
   if(!confirm('刪除這筆異動記錄？\n（僅移除記錄，不會回復庫存數量）')) return;
-  if(btn){ btn.disabled = true; btn.textContent = '…'; }
+  btn.disabled = true; btn.textContent = '…';
   const res = await apiPost({action:'deleteLog', time});
-  if(res.error){ showToast(res.error,'error'); if(btn){ btn.disabled=false; btn.textContent='✕'; } return; }
+  if(res.error){ showToast(res.error,'error'); btn.disabled=false; btn.textContent='✕'; return; }
   allLogs = allLogs.filter(l=>String(l.時間)!==String(time));
   renderLogs();
   showToast('已刪除記錄','success');
@@ -609,7 +655,12 @@ function clearLogFilter(){
 
 /* ============ 匯出 / 匯入 Excel ============ */
 function todayStr(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+function xlsxReady(){
+  if(typeof XLSX==='undefined'){ showToast('Excel 元件載入失敗，請重新整理','error'); return false; }
+  return true;
+}
 function exportItems(){
+  if(!xlsxReady()) return;
   if(!items.length){ showToast('沒有資料可匯出','error'); return; }
   const rows = items.map(i=>({
     ID:i.ID, 品名:i.品名, 數量:i.數量, 單位:i.單位,
@@ -622,6 +673,7 @@ function exportItems(){
   showToast('已匯出庫存 Excel','success');
 }
 function exportLogs(){
+  if(!xlsxReady()) return;
   const logs = filteredLogs();
   if(!logs.length){ showToast('沒有記錄可匯出','error'); return; }
   const ws = XLSX.utils.json_to_sheet(logs);
@@ -634,6 +686,8 @@ async function importItems(e){
   const f = e.target.files[0];
   if(!f) return;
   e.target.value = '';   // 允許重選同檔
+  if(!xlsxReady()) return;
+  if(f.size > IMPORT_MAX_BYTES){ showToast('檔案太大（上限 2MB）','error'); return; }
   try{
     const buf = await f.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
@@ -643,6 +697,7 @@ async function importItems(e){
     // 以「品名」為必填；有對應 ID 則更新，否則新增
     const valid = rows.filter(r=> String(r.品名||'').trim());
     if(!valid.length){ showToast('找不到「品名」欄','error'); return; }
+    if(valid.length > IMPORT_MAX_ROWS){ showToast(`一次最多匯入 ${IMPORT_MAX_ROWS} 筆`,'error'); return; }
     if(!confirm(`將匯入 ${valid.length} 筆品項（既有 ID 會更新，其餘新增）。確定？`)) return;
     showToast(`匯入中…（0/${valid.length}）`,'success');
     let ok=0, fail=0;
@@ -665,16 +720,20 @@ async function importItems(e){
     }
     await loadItems();
     showToast(`匯入完成：成功 ${ok}、失敗 ${fail}`, fail?'error':'success');
-  }catch(err){ showToast('匯入失敗：'+err.message,'error'); }
+  }catch(err){ console.warn(err); showToast('匯入失敗，請確認檔案格式','error'); }
 }
 
 /* ============ 設定 API ============ */
 function configApi(){
-  const cur = localStorage.getItem('eink_api_url')||'';
-  const v = prompt('輸入 Google Apps Script Web App 網址（留空 = 使用 mock 預覽資料）：', cur);
+  const cur = lsGet('eink_api_url')||'';
+  const v = prompt('輸入 Google Apps Script Web App 網址（留空 = 使用預設後端）：', cur);
   if(v===null) return;
-  if(v.trim()) localStorage.setItem('eink_api_url', v.trim());
-  else localStorage.removeItem('eink_api_url');
+  const s = v.trim();
+  if(s && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(s)){ showToast('網址格式不正確','error'); return; }
+  try{
+    if(s) localStorage.setItem('eink_api_url', s);
+    else localStorage.removeItem('eink_api_url');
+  }catch(e){ showToast('無法儲存設定','error'); return; }
   location.reload();
 }
 
@@ -684,7 +743,7 @@ function showToast(msg, type){
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show '+(type||'');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.className='toast '+(type||''), 2200);
+  toastTimer = setTimeout(()=>t.className='toast '+(type||''), 2600);
 }
 function showOverlay(id){ document.getElementById(id).classList.add('show'); }
 function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
@@ -693,7 +752,6 @@ document.querySelectorAll('.overlay').forEach(o=>{
 });
 
 /* ============ 啟動 ============ */
-if(!API_URL) console.log('[mock 模式] 未設定 API_URL，使用記憶體假資料');
 loadItems();
 </script>
 </body>
