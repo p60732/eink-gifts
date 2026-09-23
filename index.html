@@ -278,10 +278,10 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
     <h3>🔐 管理者登入</h3>
     <div class="field">
       <label>名稱</label>
-      <input type="text" id="loginName" maxlength="20" autocomplete="username">
+      <input type="text" id="loginName" maxlength="20" autocomplete="username" onkeydown="if(event.key==='Enter' && !needPass)doLogin()">
     </div>
-    <div class="field">
-      <label>密碼（第一次登入請輸入初始碼）</label>
+    <div class="field" id="loginPassField">
+      <label id="loginPassLabel">密碼（第一次登入請輸入初始碼）</label>
       <input type="password" id="loginPass" maxlength="64" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div class="mbtns">
@@ -347,6 +347,8 @@ const IMPORT_MAX_ROWS = 500;
 function lsSet(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} }
 let token = lsGet('eink_token') || '';
 let openMode = false;   // 後端設定為免登入時為 true
+let needPass = true;    // 登入是否需要密碼（由後端告知）
+let passwordMode = true;
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   token = t || ''; userName = name || '';
@@ -365,7 +367,10 @@ async function apiPost(body){
     console.warn(e);
     return { error:'連線失敗，請檢查網路後重試' };
   }
-  if(res && res.code==='AUTH'){ setSession('',''); showLogin(res.error); }
+  if(res && res.code==='AUTH'){
+    if(res.password===false) needPass = false; else if(res.password===true) needPass = true;
+    setSession('',''); showLogin(body.action==='getAll' ? '' : res.error);
+  }
   if(res && res.code==='MUST_CHANGE'){ openChangePass(true); }
   return res;
 }
@@ -409,6 +414,7 @@ async function loadItems(){
   }
   items = res.items || [];
   openMode = !!res.openMode;
+  passwordMode = res.passwordMode !== false;
   if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards();
   return true;
@@ -810,15 +816,16 @@ function showLogin(msg){
   document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
   document.getElementById('logPanel').classList.remove('show');
   document.getElementById('loginPass').value = '';
+  document.getElementById('loginPassField').style.display = needPass ? '' : 'none';
   if(userName) document.getElementById('loginName').value = userName;
   showOverlay('loginOverlay');
   if(msg) showToast(msg,'error');
-  setTimeout(()=>document.getElementById(document.getElementById('loginName').value?'loginPass':'loginName').focus(), 50);
+  setTimeout(()=>document.getElementById(needPass && document.getElementById('loginName').value?'loginPass':'loginName').focus(), 50);
 }
 async function doLogin(){
   const name = document.getElementById('loginName').value.trim();
   const passcode = document.getElementById('loginPass').value;
-  if(!name || !passcode){ showToast('請輸入名稱與密碼','error'); return; }
+  if(!name || (needPass && !passcode)){ showToast(needPass ? '請輸入名稱與密碼' : '請輸入名稱','error'); return; }
   const btn = document.querySelector('#loginOverlay .save');
   btn.disabled = true; btn.textContent = '登入中…';
   const res = await apiPost({action:'login', name, passcode});
@@ -857,7 +864,10 @@ async function doChangePass(){
 function openAccount(){
   document.getElementById('accountHint').textContent = openMode
     ? `目前為免登入模式，操作者記為「${userName}」` : (userName ? `目前登入：${userName}` : '');
-  document.querySelectorAll('#accountOverlay .mbtns button').forEach((b,i)=>{ b.style.display = (openMode && i!==1) ? 'none' : ''; });
+  document.querySelectorAll('#accountOverlay .mbtns button').forEach((b,i)=>{
+    const hide = (openMode && i!==1) || (!passwordMode && i===0);
+    b.style.display = hide ? 'none' : '';
+  });
   showOverlay('accountOverlay');
 }
 async function doLogout(){

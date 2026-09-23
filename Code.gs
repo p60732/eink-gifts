@@ -10,6 +10,7 @@
  *
  * 登入開關：「設定」分頁的「需要登入」取消勾選 = 免登入（任何知道網址的人都能操作），
  *   此時操作者記為「免登入操作者」欄的名稱。勾選後立即改為需要登入。
+ * 密碼開關：「登入需要密碼」取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入。
  *
  * 異動記錄為帳本：不可刪除，登打錯誤請用「沖銷」產生反向記錄。
  */
@@ -38,7 +39,8 @@ const REVERSIBLE = ['領用','補貨'];
 const CONFIG_DEFAULTS = [
   ['圖片資料夾ID', '', '存放贈品圖片的雲端硬碟資料夾；留空會自動建立'],
   ['需要登入', false, '勾選 = 需要管理者登入；取消勾選 = 任何知道網址的人都能操作'],
-  ['免登入操作者', 'Kim', '不需登入時，異動記錄上的操作者名稱']
+  ['免登入操作者', 'Kim', '不需登入時，異動記錄上的操作者名稱'],
+  ['登入需要密碼', false, '勾選 = 名稱＋密碼；取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入']
 ];
 
 /* ============ 僅限擁有者在編輯器執行 ============ */
@@ -109,6 +111,7 @@ function ensureConfigDefaults_(){
   });
 }
 function loginRequired_(){ return getConfig_('需要登入').toUpperCase() === 'TRUE'; }
+function passwordRequired_(){ return getConfig_('登入需要密碼').toUpperCase() === 'TRUE'; }
 function getConfig_(key){
   const vals = configSheet_().getDataRange().getValues();
   for (let i = 1; i < vals.length; i++) if (vals[i][0] === key) return String(vals[i][1] || '').trim();
@@ -262,13 +265,14 @@ function auth_(token){
   const s = JSON.parse(raw);
   const a = findAdmin_(s.n);
   if (!a || a.r[1] !== true) { CacheService.getScriptCache().remove('s_' + t); throw userError_('帳號已停用', 'AUTH'); }
-  return { name: s.n, mustChange: s.mc, token: t };
+  return { name: s.n, mustChange: s.mc && passwordRequired_(), token: t };
 }
 
 function login_(body){
   const name = String(body.name || '').trim();
   const pass = String(body.passcode || '');
-  if (!name || name.length > LIMITS.adminName || !pass || pass.length > LIMITS.passMax) throw userError_('名稱或密碼錯誤');
+  const needPass = passwordRequired_();
+  if (!name || name.length > LIMITS.adminName || (needPass && !pass) || pass.length > LIMITS.passMax) throw userError_(needPass ? '名稱或密碼錯誤' : '名稱不在管理者名單內');
   const cache = CacheService.getScriptCache();
   const failKey = 'f_' + Utilities.base64EncodeWebSafe(name);
   const fails = Number(cache.get(failKey) || 0);
@@ -276,14 +280,15 @@ function login_(body){
 
   const a = findAdmin_(name);
   let ok = false, mustChange = false;
-  if (a && a.r[1] === true) {
+  if (a && a.r[1] === true && !needPass) ok = true;
+  else if (a && a.r[1] === true) {
     const init = String(a.r[2] || ''), hashed = String(a.r[3] || ''), salt = String(a.r[4] || '');
     if (hashed && salt) ok = hash_(pass, salt) === hashed;
     else if (init) { ok = pass === init; mustChange = ok; }
   }
   if (!ok) {
     cache.put(failKey, String(fails + 1), FAIL_LOCK);
-    throw userError_('名稱或密碼錯誤');
+    throw userError_(needPass ? '名稱或密碼錯誤' : '名稱不在管理者名單內');
   }
   cache.remove(failKey);
   adminsSheet_().getRange(a.row, 6).setValue(new Date().toISOString());
@@ -291,6 +296,7 @@ function login_(body){
 }
 
 function changePasscode_(s, body){
+  if (!passwordRequired_()) throw userError_('目前登入不需要密碼');
   const a = findAdmin_(s.name);
   const next = String(body.newPasscode || '');
   if (next.length < LIMITS.passMin || next.length > LIMITS.passMax) throw userError_('新密碼需 ' + LIMITS.passMin + '～' + LIMITS.passMax + ' 字');
@@ -351,7 +357,7 @@ function applyDelta_(id, delta){
 }
 
 const ACTIONS = {
-  getAll: (s) => ({ items: readItems_(), user: s.name, openMode: !!s.open }),
+  getAll: (s) => ({ items: readItems_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_() }),
 
   getLogs: (s, b) => {
     let logs = readLogs_();
@@ -472,7 +478,11 @@ function doPost(e){
     if (s.mustChange && action !== 'changePasscode' && action !== 'logout') throw userError_('請先設定新密碼', 'MUST_CHANGE');
     return json_(ACTIONS[action](s, body));
   } catch (err) {
-    if (err && err.userFacing) return json_({ error: err.message, code: err.code || '' });
+    if (err && err.userFacing) {
+      const out = { error: err.message, code: err.code || '' };
+      if (err.code === 'AUTH') { try { out.password = passwordRequired_(); } catch (x) {} }
+      return json_(out);
+    }
     console.error(err);
     return json_({ error: '操作失敗，請稍後再試' });
   } finally {
