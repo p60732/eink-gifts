@@ -110,8 +110,6 @@ header .hbtn:hover{filter:brightness(.97)}
 .logitem .ldelta{font-weight:800;font-size:16px;white-space:nowrap}
 .logitem .ldelta.plus{color:var(--ok)}
 .logitem .ldelta.minus{color:var(--danger)}
-.logitem .ldel{align-self:center;margin-left:2px;width:22px;height:22px;border-radius:50%;color:var(--mid);font-size:12px;line-height:1;flex:none}
-.logitem .ldel:hover{background:var(--danger-bg);color:var(--danger)}
 
 /* Toast */
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);opacity:0;
@@ -121,6 +119,15 @@ header .hbtn:hover{filter:brightness(.97)}
 .toast.success{background:var(--ok)}
 .toast.error{background:var(--danger)}
 
+/* Login / user */
+header .user{font-size:12px;color:var(--mid);white-space:nowrap}
+.loginbox{max-width:360px}
+.loginbox .hint{font-size:12px;color:var(--mid);margin:-6px 0 14px;line-height:1.6}
+.logitem .ltype{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--bg);color:var(--mid);margin-right:4px;vertical-align:1px}
+.logitem.rev .lname,.logitem.rev .ldelta{text-decoration:line-through;opacity:.55}
+.logitem .lrev{align-self:center;flex:none;padding:4px 8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--mid);border:1px solid var(--line)}
+.logitem .lrev:hover{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-bg)}
+.field .sub{font-size:11px;color:var(--mid);margin-top:4px}
 .empty{text-align:center;color:var(--mid);padding:60px 20px;grid-column:1/-1}
 .errbox{grid-column:1/-1;text-align:center;background:var(--danger-bg);color:var(--danger);border-radius:12px;padding:40px 20px}
 .errbox b{display:block;font-size:16px;margin-bottom:6px}
@@ -137,7 +144,8 @@ header .hbtn:hover{filter:brightness(.97)}
   <button class="hbtn" onclick="openLog()">異動記錄</button>
   <button class="hbtn" onclick="exportItems()">匯出</button>
   <button class="hbtn" onclick="document.getElementById('importFile').click()">匯入</button>
-  <button class="hbtn" onclick="configApi()">設定</button>
+  <button class="hbtn" onclick="openAccount()">設定</button>
+  <span class="user" id="userLabel"></span>
   <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importItems(event)">
 </header>
 
@@ -170,10 +178,6 @@ header .hbtn:hover{filter:brightness(.97)}
       <label>備註（發給誰 / 活動名）</label>
       <input type="text" id="dispenseNote" placeholder="選填" maxlength="300">
     </div>
-    <div class="field">
-      <label>操作者</label>
-      <input type="text" id="dispenseOperator" placeholder="選填" maxlength="30">
-    </div>
     <div class="mbtns">
       <button class="cancel" onclick="closeOverlay('dispenseOverlay')">取消</button>
       <button class="save" onclick="doDispense()">確認拿出</button>
@@ -201,10 +205,6 @@ header .hbtn:hover{filter:brightness(.97)}
       <label>備註（進貨單號 / 來源）</label>
       <input type="text" id="restockNote" placeholder="選填" maxlength="300">
     </div>
-    <div class="field">
-      <label>操作者</label>
-      <input type="text" id="restockOperator" placeholder="選填" maxlength="30">
-    </div>
     <div class="mbtns">
       <button class="cancel" onclick="closeOverlay('restockOverlay')">取消</button>
       <button class="save" onclick="doRestock()">確認補入</button>
@@ -221,7 +221,7 @@ header .hbtn:hover{filter:brightness(.97)}
       <input type="text" id="fName" maxlength="50">
     </div>
     <div class="row2">
-      <div class="field"><label>數量</label><input type="number" id="fQty" value="0" min="0"></div>
+      <div class="field"><label id="fQtyLabel">期初數量</label><input type="number" id="fQty" value="0" min="0"><div class="sub" id="fQtyHint" style="display:none">數量請用「拿出／補入」調整</div></div>
       <div class="field"><label>單位</label><input type="text" id="fUnit" value="個" maxlength="10"></div>
     </div>
     <div class="field">
@@ -272,6 +272,61 @@ header .hbtn:hover{filter:brightness(.97)}
   <div class="llist" id="logList"></div>
 </div>
 
+<!-- Login -->
+<div class="overlay" id="loginOverlay">
+  <div class="modal loginbox">
+    <h3>🔐 管理者登入</h3>
+    <div class="field">
+      <label>名稱</label>
+      <input type="text" id="loginName" maxlength="20" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>密碼（第一次登入請輸入初始碼）</label>
+      <input type="password" id="loginPass" maxlength="64" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="mbtns">
+      <button class="save" onclick="doLogin()">登入</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change passcode -->
+<div class="overlay" id="passOverlay">
+  <div class="modal loginbox">
+    <h3>🔑 設定密碼</h3>
+    <div class="hint" id="passHint"></div>
+    <div class="field" id="curPassField">
+      <label>目前密碼</label>
+      <input type="password" id="curPass" maxlength="64" autocomplete="current-password">
+    </div>
+    <div class="field">
+      <label>新密碼（至少 6 字）</label>
+      <input type="password" id="newPass" maxlength="64" autocomplete="new-password">
+    </div>
+    <div class="field">
+      <label>再輸入一次</label>
+      <input type="password" id="newPass2" maxlength="64" autocomplete="new-password" onkeydown="if(event.key==='Enter')doChangePass()">
+    </div>
+    <div class="mbtns">
+      <button class="cancel" id="passCancel" onclick="closeOverlay('passOverlay')">取消</button>
+      <button class="save" onclick="doChangePass()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account -->
+<div class="overlay" id="accountOverlay">
+  <div class="modal loginbox">
+    <h3>⚙️ 設定</h3>
+    <div class="hint" id="accountHint"></div>
+    <div class="mbtns" style="flex-direction:column">
+      <button class="cancel" onclick="closeOverlay('accountOverlay');openChangePass(false)">更改密碼</button>
+      <button class="cancel" onclick="closeOverlay('accountOverlay');configApi()">後端網址</button>
+      <button class="save" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -288,26 +343,30 @@ const IMG_MAX_PX = 800;
 const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 const IMPORT_MAX_ROWS = 500;
 
-/* ============ API 封裝 ============ */
-async function apiGet(params){
-  try{
-    const qs = new URLSearchParams(params).toString();
-    const r = await fetch(API_URL+'?'+qs);
-    return await r.json();
-  }catch(e){
-    console.warn(e);
-    return { error:'連線失敗，請檢查網路後重試' };
-  }
+/* ============ 登入狀態 ============ */
+function lsSet(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} }
+let token = lsGet('eink_token') || '';
+let userName = lsGet('eink_user') || '';
+function setSession(t, name){
+  token = t || ''; userName = name || '';
+  lsSet('eink_token', token || null); lsSet('eink_user', userName || null);
+  document.getElementById('userLabel').textContent = userName ? '👤 '+userName : '';
 }
+
+/* ============ API 封裝（全部用 POST，token 不放網址） ============ */
 async function apiPost(body){
+  let res;
   try{
     // 不帶 Content-Type，避免觸發 CORS 預檢（GAS 仍可讀 e.postData.contents）
-    const r = await fetch(API_URL,{method:'POST',body:JSON.stringify(body)});
-    return await r.json();
+    const r = await fetch(API_URL,{method:'POST',body:JSON.stringify({...body, token})});
+    res = await r.json();
   }catch(e){
     console.warn(e);
     return { error:'連線失敗，請檢查網路後重試' };
   }
+  if(res && res.code==='AUTH'){ setSession('',''); showLogin(res.error); }
+  if(res && res.code==='MUST_CHANGE'){ openChangePass(true); }
+  return res;
 }
 
 /* ============ 工具 ============ */
@@ -332,7 +391,7 @@ function fmtTime(v){
 
 /* ============ 載入 / 渲染 ============ */
 async function loadItems(){
-  const res = await apiGet({action:'getAll'});
+  const res = await apiPost({action:'getAll'});
   if(res.error){
     // 不回退假資料：顯示錯誤，避免照著過期數字發放
     items = [];
@@ -348,6 +407,7 @@ async function loadItems(){
     return false;
   }
   items = res.items || [];
+  if(res.user) setSession(token, res.user);
   renderStats(); renderCards();
   return true;
 }
@@ -406,8 +466,8 @@ function setPreviewImg(el, v){
 }
 
 /* ============ 調整數量 ============ */
-async function quickAdjust(id, delta, note, operator){
-  const res = await apiPost({action:'adjustQty', id, delta, note, operator});
+async function quickAdjust(id, delta, note){
+  const res = await apiPost({action:'adjustQty', id, delta, note});
   if(res.error){ showToast(res.error,'error'); return null; }
   await loadItems();
   return res.newQty;
@@ -419,7 +479,6 @@ function openDispenseModal(){
   document.getElementById('dispensePreview').style.display='none';
   document.getElementById('dispenseQty').value = 1;
   document.getElementById('dispenseNote').value = '';
-  document.getElementById('dispenseOperator').value = '';
   showOverlay('dispenseOverlay');
 }
 function onDispenseSelect(){
@@ -439,12 +498,11 @@ async function doDispense(){
   if(!qty || qty<=0){ showToast('請輸入有效數量','error'); return; }
   if(qty > it.數量){ showToast('超過庫存數量！','error'); return; }
   const note = document.getElementById('dispenseNote').value;
-  const operator = document.getElementById('dispenseOperator').value;
   // 二次確認，避免手滑連續拿出
   if(!confirm(`確定拿出「${it.品名}」${qty}${it.單位}？\n拿出後剩 ${it.數量 - qty}${it.單位}`)) return;
   const btn = document.querySelector('#dispenseOverlay .save');
   btn.disabled = true; btn.textContent = '處理中…';
-  const newQty = await quickAdjust(id, -qty, note, operator);
+  const newQty = await quickAdjust(id, -qty, note);
   btn.disabled = false; btn.textContent = '確認拿出';
   if(newQty!==null){ showToast(`已拿出 ${qty}${it.單位}，剩 ${newQty}`,'success'); closeOverlay('dispenseOverlay'); }
 }
@@ -455,7 +513,6 @@ function openRestockModal(){
   document.getElementById('restockPreview').style.display='none';
   document.getElementById('restockQty').value = 1;
   document.getElementById('restockNote').value = '';
-  document.getElementById('restockOperator').value = '';
   showOverlay('restockOverlay');
 }
 function onRestockSelect(){
@@ -474,10 +531,9 @@ async function doRestock(){
   const qty = parseInt(document.getElementById('restockQty').value,10);
   if(!qty || qty<=0){ showToast('請輸入有效數量','error'); return; }
   const note = document.getElementById('restockNote').value;
-  const operator = document.getElementById('restockOperator').value;
   const btn = document.querySelector('#restockOverlay .save');
   btn.disabled = true; btn.textContent = '處理中…';
-  const newQty = await quickAdjust(id, qty, note, operator);
+  const newQty = await quickAdjust(id, qty, note);
   btn.disabled = false; btn.textContent = '確認補入';
   if(newQty!==null){ showToast(`已補入 ${qty}${it.單位}，共 ${newQty}`,'success'); closeOverlay('restockOverlay'); }
 }
@@ -490,6 +546,9 @@ function openItemModal(item){
   document.getElementById('itemModalTitle').textContent = item?'編輯品項':'新增品項';
   document.getElementById('fName').value = item?item.品名:'';
   document.getElementById('fQty').value = item?item.數量:0;
+  document.getElementById('fQty').disabled = !!item;
+  document.getElementById('fQtyLabel').textContent = item ? '數量' : '期初數量';
+  document.getElementById('fQtyHint').style.display = item ? 'block' : 'none';
   document.getElementById('fUnit').value = item?item.單位:'個';
   document.getElementById('fMinAlert').value = item?item.低庫存警示:0;
   document.getElementById('fNote').value = item?item.備註:'';
@@ -570,6 +629,8 @@ async function saveItem(){
   }
 }
 async function confirmDelete(id, name){
+  const it = items.find(i=>i.ID===id);
+  if(it && Number(it.數量)!==0){ showToast(`「${name}」還有 ${it.數量}，請先歸零再刪除`,'error'); return; }
   if(!confirm(`確定刪除「${name}」？`)) return;
   const res = await apiPost({action:'deleteItem', id});
   if(res.error){ showToast(res.error,'error'); return; }
@@ -582,7 +643,7 @@ let allLogs = [];
 async function openLog(){
   document.getElementById('logPanel').classList.add('show');
   document.getElementById('logList').innerHTML = '<div class="empty">載入中…</div>';
-  const res = await apiGet({action:'getLogs'});
+  const res = await apiPost({action:'getLogs'});
   if(res.error){
     allLogs = [];
     const list = document.getElementById('logList');
@@ -622,29 +683,34 @@ function renderLogs(){
     const img = src ? `<img src="${esc(src)}" alt="" loading="lazy">` : '<img alt="" style="visibility:hidden">';
     const d = Number(l.變動量)||0;
     const plus = d>=0;
-    return `<div class="logitem">${img}
+    const canRev = ['領用','補貨'].includes(l.類型) && !l.已沖銷;
+    const revTag = l.已沖銷 ? ` · 已被 ${esc(l.已沖銷)} 沖銷` : '';
+    return `<div class="logitem${l.已沖銷?' rev':''}">${img}
       <div class="linfo">
-        <div class="lname">${esc(l.品名)}</div>
+        <div class="lname"><span class="ltype">${esc(l.類型||'')}</span>${esc(l.品名)}</div>
         <div class="lnote">${esc(l.備註)||'—'}${l.操作者?' · '+esc(l.操作者):''}</div>
-        <div class="ltime">${esc(fmtTime(l.時間))} · 後 ${esc(l.變動後數量)}</div>
+        <div class="ltime">${esc(fmtTime(l.時間))} · 後 ${esc(l.變動後數量)} · ${esc(l.記錄ID||'')}${revTag}</div>
       </div>
       <div class="ldelta ${plus?'plus':'minus'}">${plus?'+':''}${d}</div>
-      <button class="ldel" title="刪除此記錄" data-idx="${idx}">✕</button>
+      ${canRev?`<button class="lrev" data-idx="${idx}">沖銷</button>`:''}
     </div>`;
   }).join('');
   list.querySelectorAll('img').forEach(img=>{ img.onerror = ()=>{ img.style.visibility='hidden'; }; });
-  list.querySelectorAll('.ldel').forEach(btn=>{
-    btn.onclick = ()=>deleteLogEntry(logs[+btn.dataset.idx].時間, btn);
+  list.querySelectorAll('.lrev').forEach(btn=>{
+    btn.onclick = ()=>reverseEntry(logs[+btn.dataset.idx], btn);
   });
 }
-async function deleteLogEntry(time, btn){
-  if(!confirm('刪除這筆異動記錄？\n（僅移除記錄，不會回復庫存數量）')) return;
+async function reverseEntry(l, btn){
+  const d = Number(l.變動量)||0;
+  const reason = prompt(`沖銷「${l.品名}」${d>0?'+':''}${d}？\n庫存會調回 ${-d>0?'+':''}${-d}，並新增一筆沖銷記錄（原記錄保留）。\n\n請輸入沖銷原因：`);
+  if(reason===null) return;
+  if(!reason.trim()){ showToast('請輸入沖銷原因','error'); return; }
   btn.disabled = true; btn.textContent = '…';
-  const res = await apiPost({action:'deleteLog', time});
-  if(res.error){ showToast(res.error,'error'); btn.disabled=false; btn.textContent='✕'; return; }
-  allLogs = allLogs.filter(l=>String(l.時間)!==String(time));
-  renderLogs();
-  showToast('已刪除記錄','success');
+  const res = await apiPost({action:'reverseLog', logId:l.記錄ID, reason});
+  if(res.error){ showToast(res.error,'error'); btn.disabled=false; btn.textContent='沖銷'; return; }
+  showToast(`已沖銷，${l.品名} 現為 ${res.newQty}`,'success');
+  await loadItems();
+  await openLog();
 }
 function clearLogFilter(){
   document.getElementById('logFilterItem').value = '';
@@ -737,6 +803,68 @@ function configApi(){
   location.reload();
 }
 
+/* ============ 登入 / 密碼 ============ */
+function showLogin(msg){
+  document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
+  document.getElementById('logPanel').classList.remove('show');
+  document.getElementById('loginPass').value = '';
+  if(userName) document.getElementById('loginName').value = userName;
+  showOverlay('loginOverlay');
+  if(msg) showToast(msg,'error');
+  setTimeout(()=>document.getElementById(document.getElementById('loginName').value?'loginPass':'loginName').focus(), 50);
+}
+async function doLogin(){
+  const name = document.getElementById('loginName').value.trim();
+  const passcode = document.getElementById('loginPass').value;
+  if(!name || !passcode){ showToast('請輸入名稱與密碼','error'); return; }
+  const btn = document.querySelector('#loginOverlay .save');
+  btn.disabled = true; btn.textContent = '登入中…';
+  const res = await apiPost({action:'login', name, passcode});
+  btn.disabled = false; btn.textContent = '登入';
+  document.getElementById('loginPass').value = '';
+  if(res.error){ showToast(res.error,'error'); return; }
+  setSession(res.token, res.name);
+  closeOverlay('loginOverlay');
+  if(res.mustChange){ openChangePass(true); return; }
+  showToast(`歡迎，${res.name}`,'success');
+  loadItems();
+}
+let passForced = false;
+function openChangePass(forced){
+  passForced = forced;
+  document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
+  document.getElementById('passHint').textContent = forced ? '第一次登入，請設定你自己的密碼（初始碼將失效）。' : '';
+  document.getElementById('curPassField').style.display = forced ? 'none' : 'block';
+  document.getElementById('passCancel').style.display = forced ? 'none' : 'block';
+  ['curPass','newPass','newPass2'].forEach(id=>document.getElementById(id).value='');
+  showOverlay('passOverlay');
+}
+async function doChangePass(){
+  const passcode = document.getElementById('curPass').value;
+  const newPasscode = document.getElementById('newPass').value;
+  if(newPasscode.length < 6){ showToast('新密碼至少 6 字','error'); return; }
+  if(newPasscode !== document.getElementById('newPass2').value){ showToast('兩次輸入的新密碼不一樣','error'); return; }
+  const res = await apiPost({action:'changePasscode', passcode, newPasscode});
+  ['curPass','newPass','newPass2'].forEach(id=>document.getElementById(id).value='');
+  if(res.error){ if(res.code!=='AUTH') showToast(res.error,'error'); return; }
+  setSession(res.token, res.name);
+  closeOverlay('passOverlay');
+  showToast('密碼已更新','success');
+  if(passForced) loadItems();
+}
+function openAccount(){
+  document.getElementById('accountHint').textContent = userName ? `目前登入：${userName}` : '';
+  showOverlay('accountOverlay');
+}
+async function doLogout(){
+  closeOverlay('accountOverlay');
+  await apiPost({action:'logout'});
+  setSession('','');
+  items = []; renderStats();
+  document.getElementById('grid').innerHTML = '';
+  showLogin();
+}
+
 /* ============ Toast / Overlay ============ */
 let toastTimer;
 function showToast(msg, type){
@@ -748,11 +876,16 @@ function showToast(msg, type){
 function showOverlay(id){ document.getElementById(id).classList.add('show'); }
 function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
 document.querySelectorAll('.overlay').forEach(o=>{
-  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('show'); });
+  o.addEventListener('click', e=>{
+    if(e.target!==o) return;
+    if(o.id==='loginOverlay' || (o.id==='passOverlay' && passForced)) return;
+    o.classList.remove('show');
+  });
 });
 
 /* ============ 啟動 ============ */
-loadItems();
+setSession(token, userName);
+if(token) loadItems(); else { document.getElementById('grid').innerHTML=''; showLogin(); }
 </script>
 </body>
 </html>
