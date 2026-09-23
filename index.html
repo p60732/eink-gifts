@@ -1189,7 +1189,7 @@ function renderPeople(){
   const box = document.getElementById('peopleList');
   box.innerHTML = people.list.map((p,i)=>{
     const me = p.name===people.me;
-    const status = p.pendingInit ? '等待首次登入（已有初始碼）' : (people.passwordMode ? (p.hasPassword ? '已設密碼' : '尚未設密碼') : '');
+    const status = !people.passwordMode ? '' : (p.pendingInit ? '等待首次登入（已有初始碼）' : (p.hasPassword ? '已設密碼' : '尚未設密碼'));
     return `<div class="prow${p.enabled?'':' off'}" data-i="${i}">
       <div class="pname"><input type="text" maxlength="20" value="${esc(p.name)}">
         <div class="pmeta">${me?'<span class="me">目前登入</span> ':''}最後登入：${esc(fmtTime(p.lastLogin))||'—'}${status?' · '+esc(status):''}</div></div>
