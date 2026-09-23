@@ -2,6 +2,9 @@
  * E Ink 贈品庫存管理系統 — Google Apps Script 後端
  * 部署為 Web App（執行身分：我；存取權：所有人）— 可在「設定」分頁切換是否需要登入
  *
+ * 人員管理：網頁「設定 → 人員管理」可新增、改名、啟用/停用人員（需有「可管理人員」權限）。
+ *   不能停用自己或拿掉自己的管理權限；至少保留一位可管理人員。人員不能刪除，只能停用。
+ *
  * 管理者設定（僅限試算表擁有者，在編輯器執行）：
  *   1. 在「管理者」分頁新增一列，填「名稱」、「啟用」勾選
  *   2. 編輯器選 generateInitCodes → 執行，會在「初始碼」欄產生一次性代碼
@@ -27,7 +30,7 @@ const SHEET_STD    = '盤點明細';
 const ITEM_HEADERS  = ['ID','品名','數量','單位','低庫存警示','備註','最後更新','圖片'];
 const LOG_HEADERS   = ['時間','品項ID','品名','變動量','變動後數量','備註','操作者','類型','記錄ID','沖銷對象'];
 const CONFIG_HEADERS = ['設定項目','值','說明'];
-const ADMIN_HEADERS = ['名稱','啟用','初始碼','密碼雜湊','鹽','最後登入','說明'];
+const ADMIN_HEADERS = ['名稱','啟用','初始碼','密碼雜湊','鹽','最後登入','說明','可管理人員'];
 const ST_HEADERS  = ['盤點ID','狀態','開始時間','開始者','完成時間','完成者','備註','品項數','已盤','有差異','調整合計'];
 const STD_HEADERS = ['盤點ID','品項ID','品名','帳面數量','實點數量','差異','備註','輸入者','輸入時間','調整記錄ID'];
 
@@ -140,13 +143,28 @@ function adminsSheet_(){
     sh = ss.insertSheet(SHEET_ADMINS);
     sh.getRange(1,1,1,ADMIN_HEADERS.length).setValues([ADMIN_HEADERS]);
     sh.getRange(2,1,2,ADMIN_HEADERS.length).setValues([
-      ['佩芝', true, '', '', '', '', '系統擁有者'],
-      ['Kim',  true, '', '', '', '', '']
+      ['佩芝', true, '', '', '', '', '系統擁有者', true],
+      ['Kim',  true, '', '', '', '', '', true]
     ]);
     sh.getRange(2, 2, 50, 1).insertCheckboxes();
+    sh.getRange(2, 8, 50, 1).insertCheckboxes();
     sh.setColumnWidth(4, 120); sh.setColumnWidth(5, 80); sh.setColumnWidth(7, 240);
   }
   return sh;
+}
+
+/** 舊版管理者分頁升級：補上「可管理人員」欄，既有啟用人員預設可管理 */
+function ensureAdminSchema_(){
+  const sh = adminsSheet_();
+  const head = sh.getRange(1, 1, 1, ADMIN_HEADERS.length).getValues()[0];
+  if (head[7] === '可管理人員') return;
+  sh.getRange(1, 8).setValue('可管理人員');
+  const n = sh.getLastRow() - 1;
+  if (n > 0) {
+    const vals = sh.getRange(2, 1, n, 2).getValues();
+    sh.getRange(2, 8, n, 1).setValues(vals.map(r => [String(r[0]).trim() !== '' && r[1] === true]));
+  }
+  sh.getRange(2, 8, Math.max(n, 1) + 49, 1).insertCheckboxes();
 }
 
 function imageFolder_(){
@@ -243,6 +261,29 @@ function img_(v){
   if (/^images\/[\w.-]+$/.test(s)) return s;
   if (/^https:\/\/[^\s"'<>]+$/.test(s)) return s;
   throw userError_('圖片請用上傳功能，或貼 https 開頭的網址');
+}
+
+/** 人員名稱：限長度、不可用符號開頭（避免公式），只允許文字、數字、空白與 ._- */
+function personName_(v){
+  const s = String(v == null ? '' : v).trim();
+  if (!s) throw userError_('請填寫名稱');
+  if (s.length > LIMITS.adminName) throw userError_('名稱最多 ' + LIMITS.adminName + ' 字');
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} ._\-]*$/u.test(s)) throw userError_('名稱只能包含文字、數字、空白與 . _ -，且不可用符號開頭');
+  return s;
+}
+function canManage_(s){
+  if (!s || s.open) return false;
+  const a = findAdmin_(s.name);
+  return !!(a && a.r[1] === true && a.r[7] === true);
+}
+function requireManage_(s){ if (!canManage_(s)) throw userError_('沒有管理人員的權限'); }
+function readAdmins_(){
+  const sh = adminsSheet_();
+  const n = sh.getLastRow() - 1;
+  if (n < 1) return [];
+  return sh.getRange(2, 1, n, ADMIN_HEADERS.length).getValues()
+    .map((r, i) => ({ row: i + 2, r }))
+    .filter(x => String(x.r[0]).trim() !== '');
 }
 
 /* ============ 認證 ============ */
@@ -397,7 +438,66 @@ function applyDelta_(id, delta){
 }
 
 const ACTIONS = {
-  getAll: (s) => ({ items: readItems_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_() }),
+  getAll: (s) => ({ items: readItems_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: canManage_(s) }),
+
+  /** 人員清單（不含密碼、初始碼等敏感欄位） */
+  listAdmins: (s) => {
+    requireManage_(s);
+    return { people: readAdmins_().map(x => ({
+      name: String(x.r[0]).trim(), enabled: x.r[1] === true, canManage: x.r[7] === true,
+      lastLogin: x.r[5] instanceof Date ? x.r[5].toISOString() : String(x.r[5] || ''),
+      note: String(x.r[6] || ''), hasPassword: !!x.r[3], pendingInit: !!x.r[2]
+    })), me: s.name, passwordMode: passwordRequired_() };
+  },
+
+  /** 新增（origName 空白）或修改人員 */
+  saveAdmin: (s, b) => {
+    requireManage_(s);
+    const orig = String(b.origName || '').trim();
+    const name = personName_(b.name);
+    const enabled = b.enabled === true, manage = b.canManage === true;
+    const note = text_(b.note, 50, '說明');
+    const all = readAdmins_();
+    const dup = all.find(x => String(x.r[0]).trim() === name && String(x.r[0]).trim() !== orig);
+    if (dup) throw userError_('已經有叫「' + name + '」的人員');
+    const sh = adminsSheet_();
+    let code = '';
+    if (!orig) {
+      const init = passwordRequired_() ? randomCode_(8) : '';
+      sh.appendRow([ name, enabled, init, '', '', '', note, manage ]);
+      const last = sh.getLastRow();
+      sh.getRange(last, 2).insertCheckboxes(); sh.getRange(last, 8).insertCheckboxes();
+      sh.getRange(last, 2).setValue(enabled); sh.getRange(last, 8).setValue(manage);
+      code = init;
+    } else {
+      const t = all.find(x => String(x.r[0]).trim() === orig);
+      if (!t) throw userError_('找不到人員');
+      if (orig === s.name && !enabled) throw userError_('不能停用自己');
+      if (orig === s.name && !manage) throw userError_('不能拿掉自己的管理權限');
+      const managers = all.filter(x => x.r[1] === true && x.r[7] === true && String(x.r[0]).trim() !== orig).length;
+      if (!(enabled && manage) && managers === 0) throw userError_('至少要保留一位可管理人員');
+      sh.getRange(t.row, 1, 1, 2).setValues([[ name, enabled ]]);
+      sh.getRange(t.row, 7, 1, 2).setValues([[ note, manage ]]);
+    }
+    const out = { success: true, initCode: code };
+    if (orig && orig === s.name && name !== orig) {   // 改自己的名字：換發新的登入
+      CacheService.getScriptCache().remove('s_' + s.token);
+      out.token = newSession_(name, false); out.name = name;
+    }
+    return out;
+  },
+
+  /** 重設某人的密碼：清除舊密碼並產生新的一次性初始碼（僅密碼模式） */
+  resetAdminPasscode: (s, b) => {
+    requireManage_(s);
+    if (!passwordRequired_()) throw userError_('目前登入不需要密碼');
+    const name = personName_(b.name);
+    const t = readAdmins_().find(x => String(x.r[0]).trim() === name);
+    if (!t) throw userError_('找不到人員');
+    const code = randomCode_(8);
+    adminsSheet_().getRange(t.row, 3, 1, 3).setValues([[ code, '', '' ]]);
+    return { success: true, initCode: code };
+  },
 
   getLogs: (s, b) => {
     let logs = readLogs_();
@@ -585,6 +685,7 @@ function doPost(e){
     const action = String(body.action || '');
     ensureLogSchema_();
     ensureConfigDefaults_();
+    ensureAdminSchema_();
 
     if (action === 'login') return json_(login_(body));
     if (!Object.prototype.hasOwnProperty.call(ACTIONS, action)) throw userError_('未知的操作');

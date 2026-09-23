@@ -114,6 +114,21 @@ svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;str
 .modal .mbtns .save{background:var(--primary);color:#fff}
 .modal .mbtns .save:hover{background:var(--primary-h)}
 .loginbox{max-width:380px}
+.prow{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.prow .pname{flex:1;min-width:140px}
+.prow .pname input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;outline:none}
+.prow .pname input:focus{border-color:var(--ink)}
+.prow .pmeta{font-size:12px;color:var(--mute);margin-top:4px}
+.prow .me{font-size:11px;font-weight:700;background:var(--soft);color:var(--mid);padding:1px 7px;border-radius:999px;margin-left:4px}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--ink2);white-space:nowrap;cursor:pointer}
+.chk input{width:17px;height:17px;accent-color:var(--primary)}
+.prow .pbtns{display:flex;gap:6px}
+.prow .pbtns button{padding:7px 12px;border-radius:10px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink2)}
+.prow .pbtns button.save{background:var(--primary);color:#fff;border-color:var(--primary)}
+.prow.off .pname input{color:var(--mute);text-decoration:line-through}
+.padd{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.padd input[type=text]{flex:1;min-width:150px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;outline:none}
+.padd input[type=text]:focus{border-color:var(--ink)}
 .loginbox .hint{font-size:13px;color:var(--mid);margin:-8px 0 14px;line-height:1.6}
 
 /* ---------- Logs ---------- */
@@ -125,6 +140,8 @@ svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;str
 .llist{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .logitem{display:flex;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:center}
 .logitem:last-child{border-bottom:none}
+.logmore{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px;color:var(--mid);font-size:13px}
+.logmore .btn{padding:8px 16px;font-size:14px}
 .logitem img{width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--soft);flex:none}
 .logitem .linfo{flex:1;min-width:0}
 .logitem .lname{font-weight:700;font-size:15px}
@@ -264,11 +281,11 @@ body.st-open .toast{bottom:96px}
 
   <section class="view" id="view-logs">
     <div class="lfilter" id="logPanel">
-      <select id="logFilterItem" onchange="renderLogs()"></select>
+      <select id="logFilterItem" onchange="resetLogLimit()"></select>
       <div class="lfilter-row">
-        <input type="date" id="logFilterFrom" onchange="renderLogs()">
+        <input type="date" id="logFilterFrom" onchange="resetLogLimit()">
         <span>～</span>
-        <input type="date" id="logFilterTo" onchange="renderLogs()">
+        <input type="date" id="logFilterTo" onchange="resetLogLimit()">
         <button class="hbtn" onclick="clearLogFilter()">清除</button>
       </div>
       <button class="hbtn" onclick="exportLogs()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
@@ -430,14 +447,31 @@ body.st-open .toast{bottom:96px}
     <h3>設定</h3>
     <div class="hint" id="accountHint"></div>
     <div class="mbtns" style="flex-direction:column">
-      <button class="cancel" onclick="closeOverlay('accountOverlay');openChangePass(false)">更改密碼</button>
-      <button class="cancel" onclick="closeOverlay('accountOverlay');configApi()">後端網址</button>
+      <button class="cancel" id="accPeople" onclick="closeOverlay('accountOverlay');openPeople()">人員管理</button>
+      <button class="cancel" id="accPass" onclick="closeOverlay('accountOverlay');openChangePass(false)">更改密碼</button>
+      <button class="cancel" id="accApi" onclick="closeOverlay('accountOverlay');configApi()">後端網址</button>
       <button class="save" onclick="doLogout()">登出</button>
     </div>
   </div>
 </div>
 
 <div id="printArea"></div>
+
+<!-- People -->
+<div class="overlay" id="peopleOverlay">
+  <div class="modal" style="max-width:620px">
+    <h3>人員管理</h3>
+    <div class="hint" id="peopleHint" style="font-size:13px;color:var(--mid);margin:-8px 0 14px;line-height:1.7">
+      名單內且「啟用」的人才能登入。「可管理」的人可以在這裡新增或調整人員。人員不能刪除，不再使用請取消「啟用」。</div>
+    <div id="peopleList"></div>
+    <div class="padd">
+      <input type="text" id="newPersonName" maxlength="20" placeholder="新人員名稱">
+      <label class="chk"><input type="checkbox" id="newPersonManage"> 可管理</label>
+      <button class="btn primary" onclick="addPerson()">＋ 新增</button>
+    </div>
+    <div class="mbtns"><button class="cancel" onclick="closeOverlay('peopleOverlay')">關閉</button></div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -461,6 +495,7 @@ let token = lsGet('eink_token') || '';
 let openMode = false;   // 後端設定為免登入時為 true
 let needPass = true;    // 登入是否需要密碼（由後端告知）
 let passwordMode = true;
+let canManage = false;
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   token = t || ''; userName = name || '';
@@ -527,6 +562,7 @@ async function loadItems(){
   items = res.items || [];
   openMode = !!res.openMode;
   passwordMode = res.passwordMode !== false;
+  canManage = !!res.canManage;
   if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards();
   return true;
@@ -551,7 +587,7 @@ function switchTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
   ['items','logs','st'].forEach(k=>document.getElementById('view-'+k).classList.toggle('on', k===t));
   document.body.classList.toggle('st-open', t==='st');
-  if(t==='logs') loadLogs();
+  if(t==='logs') loadLogs(true);
   if(t==='st') loadStocktakeTab();
 }
 function renderCards(){
@@ -772,7 +808,15 @@ async function confirmDelete(id, name){
 /* ============ 異動記錄 ============ */
 let allLogs = [];
 function openLog(){ switchTab('logs'); }
-async function loadLogs(){
+const LOG_PAGE = 20;
+let logLimit = LOG_PAGE;
+function resetLogLimit(){ logLimit = LOG_PAGE; renderLogs(); }
+/** reset=true：回到預設（全部品項、不限日期、最新 20 筆） */
+async function loadLogs(reset = true){
+  if(reset){
+    logLimit = LOG_PAGE;
+    ['logFilterItem','logFilterFrom','logFilterTo'].forEach(id=>{ document.getElementById(id).value = ''; });
+  }
   document.getElementById('logList').innerHTML = '<div class="empty">載入中…</div>';
   const res = await apiPost({action:'getLogs'});
   if(res.error){
@@ -789,7 +833,7 @@ async function loadLogs(){
   const ids = [...new Set(allLogs.map(l=>String(l.品項ID)))];
   sel.innerHTML = '<option value="">全部品項</option>' +
     ids.map(id=>{ const it = items.find(i=>i.ID===id); const nm = it?it.品名:(allLogs.find(l=>String(l.品項ID)===id)||{}).品名||id; return `<option value="${esc(id)}">${esc(nm)}</option>`; }).join('');
-  sel.value = prev;
+  sel.value = reset ? '' : prev;
   renderLogs();
 }
 function filteredLogs(){
@@ -805,7 +849,8 @@ function filteredLogs(){
   });
 }
 function renderLogs(){
-  const logs = filteredLogs();
+  const all = filteredLogs();
+  const logs = all.slice(0, logLimit);
   const list = document.getElementById('logList');
   if(!logs.length){ list.innerHTML = '<div class="empty">沒有符合的記錄</div>'; return; }
   list.innerHTML = logs.map((l, idx)=>{
@@ -826,6 +871,10 @@ function renderLogs(){
       ${canRev?`<button class="lrev" data-idx="${idx}">沖銷</button>`:''}
     </div>`;
   }).join('');
+  list.insertAdjacentHTML('beforeend', `<div class="logmore">顯示 ${logs.length} / ${all.length} 筆${
+    all.length > logs.length ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
+  const more = document.getElementById('logMoreBtn');
+  if(more) more.onclick = ()=>{ logLimit += LOG_PAGE; renderLogs(); };
   list.querySelectorAll('img').forEach(img=>{ img.onerror = ()=>{ img.style.visibility='hidden'; }; });
   list.querySelectorAll('.lrev').forEach(btn=>{
     btn.onclick = ()=>reverseEntry(logs[+btn.dataset.idx], btn);
@@ -841,13 +890,13 @@ async function reverseEntry(l, btn){
   if(res.error){ showToast(res.error,'error'); btn.disabled=false; btn.textContent='沖銷'; return; }
   showToast(`已沖銷，${l.品名} 現為 ${res.newQty}`,'success');
   await loadItems();
-  await openLog();
+  await loadLogs(false);
 }
 function clearLogFilter(){
   document.getElementById('logFilterItem').value = '';
   document.getElementById('logFilterFrom').value = '';
   document.getElementById('logFilterTo').value = '';
-  renderLogs();
+  resetLogLimit();
 }
 
 /* ============ 匯出 / 匯入 Excel ============ */
@@ -1121,6 +1170,79 @@ function exportStocktake(){
   showToast('已匯出盤點明細','success');
 }
 
+/* ============ 人員管理 ============ */
+let people = { list:[], me:'', passwordMode:false };
+async function openPeople(){
+  document.getElementById('peopleList').innerHTML = '<div class="empty" style="padding:20px">載入中…</div>';
+  document.getElementById('newPersonName').value = '';
+  document.getElementById('newPersonManage').checked = false;
+  showOverlay('peopleOverlay');
+  await reloadPeople();
+}
+async function reloadPeople(){
+  const res = await apiPost({action:'listAdmins'});
+  if(res.error){ closeOverlay('peopleOverlay'); if(res.code!=='AUTH') showToast(res.error,'error'); return; }
+  people = { list: res.people||[], me: res.me, passwordMode: !!res.passwordMode };
+  renderPeople();
+}
+function renderPeople(){
+  const box = document.getElementById('peopleList');
+  box.innerHTML = people.list.map((p,i)=>{
+    const me = p.name===people.me;
+    const status = p.pendingInit ? '等待首次登入（已有初始碼）' : (people.passwordMode ? (p.hasPassword ? '已設密碼' : '尚未設密碼') : '');
+    return `<div class="prow${p.enabled?'':' off'}" data-i="${i}">
+      <div class="pname"><input type="text" maxlength="20" value="${esc(p.name)}">
+        <div class="pmeta">${me?'<span class="me">目前登入</span> ':''}最後登入：${esc(fmtTime(p.lastLogin))||'—'}${status?' · '+esc(status):''}</div></div>
+      <label class="chk"><input type="checkbox" class="pen" ${p.enabled?'checked':''} ${me?'disabled':''}> 啟用</label>
+      <label class="chk"><input type="checkbox" class="pmg" ${p.canManage?'checked':''} ${me?'disabled':''}> 可管理</label>
+      <div class="pbtns">
+        ${people.passwordMode?'<button class="preset">重設密碼</button>':''}
+        <button class="save psave">儲存</button>
+      </div></div>`;
+  }).join('') || '<div class="empty" style="padding:20px">沒有人員</div>';
+  box.querySelectorAll('.prow').forEach(row=>{
+    const p = people.list[+row.dataset.i];
+    row.querySelector('.psave').onclick = ()=>savePerson(p, row);
+    const rs = row.querySelector('.preset'); if(rs) rs.onclick = ()=>resetPerson(p);
+  });
+}
+function showInitCode(name, code){
+  alert(`「${name}」的一次性初始碼：\n\n${code}\n\n請私下交給對方。第一次登入時需用它設定自己的密碼，之後初始碼就失效。\n（這個代碼只會顯示這一次）`);
+}
+async function savePerson(p, row){
+  const name = row.querySelector('.pname input').value.trim();
+  const enabled = row.querySelector('.pen').checked;
+  const manage = row.querySelector('.pmg').checked;
+  if(!name){ showToast('請填寫名稱','error'); return; }
+  if(!enabled && p.enabled && !confirm(`停用「${p.name}」？\n停用後對方會立即登出、無法再登入。`)) return;
+  const btn = row.querySelector('.psave'); btn.disabled = true; btn.textContent = '…';
+  const res = await apiPost({action:'saveAdmin', origName:p.name, name, enabled, canManage:manage, note:p.note});
+  btn.disabled = false; btn.textContent = '儲存';
+  if(res.error){ showToast(res.error,'error'); return; }
+  if(res.token){ setSession(res.token, res.name); }
+  showToast('已儲存','success');
+  await reloadPeople();
+}
+async function addPerson(){
+  const name = document.getElementById('newPersonName').value.trim();
+  const manage = document.getElementById('newPersonManage').checked;
+  if(!name){ showToast('請輸入新人員名稱','error'); return; }
+  const res = await apiPost({action:'saveAdmin', name, enabled:true, canManage:manage, note:''});
+  if(res.error){ showToast(res.error,'error'); return; }
+  document.getElementById('newPersonName').value = '';
+  document.getElementById('newPersonManage').checked = false;
+  showToast(`已新增「${name}」`,'success');
+  if(res.initCode) showInitCode(name, res.initCode);
+  await reloadPeople();
+}
+async function resetPerson(p){
+  if(!confirm(`重設「${p.name}」的密碼？\n舊密碼會失效，並產生新的一次性初始碼。`)) return;
+  const res = await apiPost({action:'resetAdminPasscode', name:p.name});
+  if(res.error){ showToast(res.error,'error'); return; }
+  showInitCode(p.name, res.initCode);
+  await reloadPeople();
+}
+
 /* ============ 登入 / 密碼 ============ */
 function showLogin(msg){
   document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
@@ -1174,10 +1296,11 @@ async function doChangePass(){
 function openAccount(){
   document.getElementById('accountHint').textContent = openMode
     ? `目前為免登入模式，操作者記為「${userName}」` : (userName ? `目前登入：${userName}` : '');
-  document.querySelectorAll('#accountOverlay .mbtns button').forEach((b,i)=>{
-    const hide = (openMode && i!==1) || (!passwordMode && i===0);
-    b.style.display = hide ? 'none' : '';
-  });
+  const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
+  show('accPeople', !openMode && canManage);
+  show('accPass', !openMode && passwordMode);
+  show('accApi', true);
+  document.querySelector('#accountOverlay .mbtns .save').style.display = openMode ? 'none' : '';
   showOverlay('accountOverlay');
 }
 async function doLogout(){
