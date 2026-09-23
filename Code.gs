@@ -50,8 +50,12 @@ const CONFIG_DEFAULTS = [
   ['圖片資料夾ID', '', '存放贈品圖片的雲端硬碟資料夾；留空會自動建立'],
   ['需要登入', false, '勾選 = 需要管理者登入；取消勾選 = 任何知道網址的人都能操作'],
   ['免登入操作者', 'Kim', '不需登入時，異動記錄上的操作者名稱'],
-  ['登入需要密碼', false, '勾選 = 名稱＋密碼；取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入']
+  ['登入需要密碼', false, '勾選 = 名稱＋密碼；取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入'],
+  ['備份資料夾ID', '', '每週自動備份存放的雲端硬碟資料夾；留空會自動建立'],
+  ['最後備份', '', '最近一次自動備份的時間（系統自動填寫）']
 ];
+const BACKUP_KEEP = 26;          // 每週一份，保留約半年
+const BACKUP_TAG = '_備份_';
 
 /* ============ 僅限擁有者在編輯器執行 ============ */
 function initSheets(){
@@ -87,6 +91,43 @@ function generateInitCodes(){
     made++;
   });
   console.log('已產生 ' + made + ' 組初始碼，請到「管理者」分頁查看，私下交給對方');
+}
+
+/** 備份整份試算表到「eink贈品備份」資料夾；超過 BACKUP_KEEP 份的舊備份移到垃圾桶。由每週觸發條件呼叫，也可手動執行 */
+function backupSpreadsheet(){
+  assertOwner_();
+  const file = DriveApp.getFileById(ss_().getId());
+  const folder = backupFolder_();
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Taipei', 'yyyy-MM-dd_HHmm');
+  file.makeCopy(file.getName() + BACKUP_TAG + stamp, folder);
+  const list = [];
+  const it = folder.getFiles();
+  while (it.hasNext()) { const f = it.next(); if (f.getName().indexOf(BACKUP_TAG) >= 0) list.push(f); }
+  list.sort((a, b) => b.getDateCreated().getTime() - a.getDateCreated().getTime());
+  list.slice(BACKUP_KEEP).forEach(f => f.setTrashed(true));   // 垃圾桶內 30 天內仍可救回
+  setConfig_('最後備份', new Date().toISOString());
+  console.log('已備份，目前保留 ' + Math.min(list.length, BACKUP_KEEP) + ' 份');
+}
+
+/** 只需執行一次：建立每週一早上 7 點的自動備份，並立刻先備份一份 */
+function setupWeeklyBackup(){
+  assertOwner_();
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'backupSpreadsheet')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('backupSpreadsheet').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).everyWeeks(1).create();
+  backupSpreadsheet();
+  console.log('已設定每週一早上 7 點自動備份');
+}
+
+function backupFolder_(){
+  const id = getConfig_('備份資料夾ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* 失效則重建 */ } }
+  const parents = DriveApp.getFileById(ss_().getId()).getParents();
+  const parent = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  const folder = parent.createFolder('eink贈品備份');
+  setConfig_('備份資料夾ID', folder.getId());
+  return folder;
 }
 
 function assertOwner_(){
@@ -521,7 +562,12 @@ function applyDelta_(id, delta){
 }
 
 const ACTIONS = {
-  getAll: (s) => ({ items: readItemsCached_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: canManage_(s) }),
+  getAll: (s) => {
+    const manage = canManage_(s);
+    const out = { items: readItemsCached_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: manage };
+    if (manage) out.lastBackup = getConfig_('最後備份');
+    return out;
+  },
 
   /** 人員清單（不含密碼、初始碼等敏感欄位） */
   listAdmins: (s) => {
@@ -766,7 +812,7 @@ function doGet(){
 /* ============ POST ============ */
 /** 只讀取、不寫入的動作：不必排隊等鎖 */
 const READ_ONLY = ['getAll','getLogs','getStocktakes','getStocktakeDetail','listAdmins'];
-const SCHEMA_KEY = 'schema_ok_v1';
+const SCHEMA_KEY = 'schema_ok_v2';
 
 /** 格式檢查（補欄位、補設定列）只在快取過期時做一次 */
 function ensureSchemaOnce_(lock){

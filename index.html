@@ -43,6 +43,8 @@ svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;str
 .hero .tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
 .user{font-size:13px;color:var(--mid);padding:0 6px;white-space:nowrap}
 .hero .tools .sync{font-size:12px;color:var(--mid);background:#f1f3f6;border-radius:999px;padding:2px 10px;margin-left:6px}
+.stremind{padding:12px 14px;border-radius:12px;background:#f1f3f6;color:var(--mid);font-size:14px;margin-bottom:12px}
+.stremind.due{background:#fdecea;color:#b42318;font-weight:600}
 .hero .actions{display:flex;gap:12px;margin-top:22px;flex-wrap:wrap}
 
 /* ---------- KPI cards ---------- */
@@ -447,6 +449,7 @@ body.st-open .toast{bottom:96px}
   <div class="modal loginbox">
     <h3>設定</h3>
     <div class="hint" id="accountHint"></div>
+    <div class="hint" id="accBackup" style="display:none"></div>
     <div class="mbtns" style="flex-direction:column">
       <button class="cancel" id="accPeople" onclick="closeOverlay('accountOverlay');openPeople()">人員管理</button>
       <button class="cancel" id="accPass" onclick="closeOverlay('accountOverlay');openChangePass(false)">更改密碼</button>
@@ -497,6 +500,7 @@ let openMode = false;   // 後端設定為免登入時為 true
 let needPass = true;    // 登入是否需要密碼（由後端告知）
 let passwordMode = true;
 let canManage = false;
+let lastBackup = '';
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   token = t || ''; userName = name || '';
@@ -602,6 +606,7 @@ async function loadItems(){
   openMode = !!res.openMode;
   passwordMode = res.passwordMode !== false;
   canManage = !!res.canManage;
+  lastBackup = res.lastBackup || '';
   if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards(); saveItemsCache();
   return true;
@@ -1050,6 +1055,7 @@ function configApi(){
 }
 
 /* ============ 盤點 ============ */
+const ST_INTERVAL_DAYS = 182;   // 盤點頻率：約半年一次
 let st = { open:null, details:[], history:[], view:null, viewDetails:[], filter:'all' };
 function stDetailMap(list){ const m={}; (list||[]).forEach(d=>m[String(d.品項ID)]=d); return m; }
 function openStocktake(){ switchTab('st'); }
@@ -1103,7 +1109,14 @@ function renderStocktake(){
       <div class="hinfo"><div class="htitle">${esc(h.盤點ID)} <span class="tag ${h.狀態==='已取消'?'cancel':''}">${esc(h.狀態)}</span></div>
       <div class="hsub">${esc(fmtTime(h.開始時間))} · ${esc(h.開始者)} · 已盤 ${esc(h.已盤)} · 差異 ${esc(h.有差異)} 項 · 調整 ${esc(h.調整合計)}${h.備註?' · '+esc(h.備註):''}</div></div>
       <button class="hbtn" data-i="${i}">查看</button></div>`).join('');
-    body.innerHTML = `<p class="stintro">
+    const lastDone = st.history.find(h=>h.狀態==='已完成');
+    const lt = lastDone ? new Date(lastDone.完成時間 || lastDone.開始時間) : null;
+    const days = lt && !isNaN(lt) ? Math.floor((Date.now() - lt) / 86400000) : null;
+    const due = days === null || days >= ST_INTERVAL_DAYS;
+    const remind = `<div class="stremind${due?' due':''}">${days === null
+      ? '還沒有完成過盤點。建議每半年盤點一次。'
+      : `上次完成盤點：${lt.getFullYear()}/${lt.getMonth()+1}/${lt.getDate()}（${days} 天前）。${due ? '已超過半年，建議安排盤點。' : '建議每半年盤點一次。'}`}</div>`;
+    body.innerHTML = remind + `<p class="stintro">
       開始後逐項輸入實際點到的數量，系統會自動算出差異。盤點期間照常可以拿出、補入。<br>
       按「完成盤點」才會一次調整庫存；完成前隨時可以修改或取消。</p>
       <h4 style="margin:6px 0 12px;font-size:16px">過去的盤點</h4>${hist || '<div class="empty" style="padding:20px">還沒有盤點記錄</div>'}`;
@@ -1366,6 +1379,14 @@ function openAccount(){
   show('accPeople', !openMode && canManage);
   show('accPass', !openMode && passwordMode);
   show('accApi', !openMode && canManage);   // 後端網址只給可管理人員
+  // 備份狀態（只給可管理人員看）：超過 8 天沒備份就提醒
+  const bk = document.getElementById('accBackup');
+  const bt = new Date(lastBackup);
+  const stale = !lastBackup || isNaN(bt) || (Date.now() - bt) > 8 * 86400000;
+  bk.textContent = !lastBackup || isNaN(bt) ? '⚠ 尚未設定每週自動備份'
+    : `最後自動備份：${bt.getFullYear()}/${bt.getMonth()+1}/${bt.getDate()}${stale ? '（已超過一週，請檢查備份）' : ''}`;
+  bk.style.color = stale ? 'var(--danger, #c0392b)' : '';
+  show('accBackup', !openMode && canManage);
   document.querySelector('#accountOverlay .mbtns .save').style.display = openMode ? 'none' : '';
   showOverlay('accountOverlay');
 }
