@@ -521,8 +521,8 @@ async function apiPost(body){
   const payload = JSON.stringify({...body, token});
   const isRead = READ_ACTIONS.includes(body.action);
   try{
-    // 讀取：15 秒沒回應就自動重試一次；寫入不重試，避免重複登記
-    try{ res = await postOnce(payload, isRead ? 15000 : 45000); }
+    // 讀取：10 秒沒回應就自動重試一次；寫入不重試，避免重複登記
+    try{ res = await postOnce(payload, isRead ? 10000 : 45000); }
     catch(e){ if(!isRead) throw e; res = await postOnce(payload, 20000); }
   }catch(e){
     console.warn(e);
