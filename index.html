@@ -7,168 +7,183 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
-  --accent:#a87c72; --accent-bg:#f3ede9;
-  --warn:#b08a6e;   --warn-bg:#f5ede6;
-  --ok:#7a9387;     --ok-bg:#edf2f0;
-  --danger:#a0574e; --danger-bg:#f5ebe9;
-  --ink:#3a3530; --mid:#8c847c; --line:#e8e2dc;
-  --bg:#f2ede8; --white:#faf8f6;
+  --ink:#0f172a; --ink2:#1e293b; --mid:#64748b; --mute:#94a3b8;
+  --line:#e2e8f0; --soft:#f1f5f9; --bg:#ffffff; --white:#ffffff;
+  --primary:#0f172a; --primary-h:#1e293b;
+  --accent:#0f172a; --accent-bg:#f1f5f9;
+  --ok:#16a34a; --ok-bg:#dcfce7;
+  --warn:#d97706; --warn-bg:#fef3c7;
+  --danger:#dc2626; --danger-bg:#fee2e2;
+  --radius:16px; --shadow:0 1px 2px rgba(15,23,42,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
-button{font-family:inherit;cursor:pointer;border:none;background:none}
-button:disabled{opacity:.6;cursor:default}
-input,select,textarea{font-family:inherit;font-size:14px}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+button:disabled{opacity:.55;cursor:default}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--ink)}
+svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 
-/* Header */
-header{height:56px;background:var(--white);border-bottom:1px solid var(--line);
-  display:flex;align-items:center;gap:12px;padding:0 16px;position:sticky;top:0;z-index:10}
-header .logo{font-weight:800;font-size:16px;color:var(--accent);white-space:nowrap}
-header .search{flex:1;max-width:360px;display:flex;align-items:center;background:var(--bg);
-  border:1px solid var(--line);border-radius:7px;padding:0 10px}
-header .search input{flex:1;border:none;background:none;padding:8px 6px;outline:none;color:var(--ink)}
-header .hbtn{padding:8px 12px;border-radius:7px;background:var(--accent-bg);color:var(--accent);font-weight:600;font-size:13px;white-space:nowrap}
-.hbtn{white-space:nowrap}
-@media (max-width:640px){
-  header{height:auto;flex-wrap:wrap;gap:8px;padding:8px 12px}
-  header .search{order:9;flex:1 1 100%;max-width:none}
-  header .hbtn{padding:7px 10px;font-size:12px}
-  header .user{margin-left:auto}
-}
-body.st-open .toast{bottom:92px}
-header .hbtn:hover{filter:brightness(.97)}
+/* ---------- Buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 18px;border-radius:12px;font-weight:700;font-size:15px;white-space:nowrap;border:1px solid var(--line);background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(15,23,42,.08);transition:background .15s,border-color .15s}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn.primary:hover{background:var(--primary-h)}
+.btn svg.ic{width:18px;height:18px}
+.hbtn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;font-size:13px;font-weight:600;color:var(--mid);white-space:nowrap}
+.hbtn:hover{background:var(--soft);color:var(--ink)}
+.hbtn svg.ic{width:16px;height:16px}
 
-/* Stats bar */
-.stats{display:flex;gap:10px;padding:14px 16px 4px;flex-wrap:wrap}
-.stat{background:var(--white);border:1px solid var(--line);border-radius:10px;
-  padding:11px 16px;display:flex;align-items:center;gap:10px}
+/* ---------- Hero ---------- */
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+.hero{padding:30px 0 26px;border-bottom:1px solid var(--line)}
+.hero .top{display:flex;align-items:flex-start;gap:12px}
+.hero .top .titles{flex:1;min-width:0}
+.eyebrow{font-size:13px;letter-spacing:.22em;color:var(--mid);font-weight:500;margin-bottom:10px}
+.hero h1{font-size:30px;font-weight:800;letter-spacing:.01em;line-height:1.25}
+.hero .sub{color:var(--mid);font-size:16px;margin-top:8px;line-height:1.6}
+.hero .tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
+.user{font-size:13px;color:var(--mid);padding:0 6px;white-space:nowrap}
+.hero .actions{display:flex;gap:12px;margin-top:22px;flex-wrap:wrap}
+
+/* ---------- KPI cards ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:26px 0 8px}
+.kpi{display:flex;align-items:center;gap:18px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow)}
+.kpi .icon{width:52px;height:52px;border-radius:14px;background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--ink);flex:none}
+.kpi .icon.danger{background:var(--danger-bg);color:var(--danger)}
+.kpi .label{font-size:14px;color:var(--mid)}
+.kpi .value{font-size:26px;font-weight:800;margin-top:2px;line-height:1.2}
+.kpi .value.small{font-size:20px}
+/* small stat chips (盤點統計) */
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;align-items:baseline;gap:8px}
 .stat .label{font-size:12px;color:var(--mid)}
-.stat .value{font-size:16px;font-weight:700}
-.stat.low .value{color:var(--warn)}
+.stat .value{font-size:17px;font-weight:800}
+.stat.low .value{color:var(--danger)}
 
-/* Cards grid */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;padding:14px 16px 90px}
-.card{background:var(--white);border:1px solid var(--line);border-top:3px solid var(--ok);
-  border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
-.card.low{border-top-color:var(--warn)}
-.card .img{aspect-ratio:4/3;background:var(--accent-bg);overflow:hidden}
+/* ---------- Tabs ---------- */
+.tabs{display:inline-flex;gap:4px;background:var(--soft);border-radius:14px;padding:5px;margin:22px 0 18px;max-width:100%;overflow-x:auto}
+.tabs button{padding:9px 20px;border-radius:10px;font-size:15px;font-weight:600;color:var(--mid);white-space:nowrap}
+.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.view{display:none;padding-bottom:40px}
+.view.on{display:block}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.search{flex:1;min-width:200px;max-width:420px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:0 14px}
+.search svg.ic{width:18px;height:18px;color:var(--mute)}
+.search input{flex:1;border:none;background:none;padding:11px 0;outline:none}
+
+/* ---------- Item cards ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.card .img{aspect-ratio:4/3;background:var(--soft);overflow:hidden}
 .card .img img{width:100%;height:100%;object-fit:cover;display:block}
-.card .body{padding:12px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
-.card .name{font-weight:700;font-size:15px}
-.card .qtyrow{display:flex;align-items:baseline;gap:5px}
-.card .qty{font-size:38px;font-weight:800;line-height:1}
-.card .unit{font-size:13px;color:var(--mid)}
-.card .lowtag{display:inline-block;background:var(--warn-bg);color:var(--warn);
-  font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;align-self:flex-start}
-.card .note{font-size:12px;color:var(--mid);flex:1}
-.card .meta{font-size:10px;color:var(--mid)}
-.card .actions{display:flex;gap:8px;border-top:1px solid var(--line);padding:8px 14px}
-.card .actions button{flex:1;padding:6px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--mid)}
-.card .actions .edit:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-bg)}
+.card .body{padding:16px 18px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card .name{font-weight:700;font-size:16px}
+.card .qtyrow{display:flex;align-items:baseline;gap:6px}
+.card .qty{font-size:34px;font-weight:800;line-height:1.1}
+.card .unit{font-size:14px;color:var(--mid)}
+.card .lowtag{display:inline-flex;align-items:center;gap:4px;background:var(--danger-bg);color:var(--danger);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;align-self:flex-start}
+.card.low .qty{color:var(--danger)}
+.card .note{font-size:13px;color:var(--mid);flex:1;line-height:1.5}
+.card .meta{font-size:12px;color:var(--mute)}
+.card .actions{display:flex;gap:8px;border-top:1px solid var(--line);padding:12px 18px}
+.card .actions button{flex:1;padding:8px;border-radius:10px;font-size:13px;font-weight:600;border:1px solid var(--line);color:var(--ink2);background:#fff}
+.card .actions .edit:hover{background:var(--soft)}
 .card .actions .del:hover{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-bg)}
 
-/* FAB */
-.fab{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:10px;z-index:20}
-.fab button{border-radius:24px;padding:14px 20px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(58,53,48,.18)}
-.fab .dispense{background:var(--accent);color:#fff}
-.fab .restock{background:var(--ok);color:#fff}
-.fab .add{background:var(--white);color:var(--accent);border:1px solid var(--line)}
-
-/* Modal */
-.overlay{position:fixed;inset:0;background:rgba(58,53,48,.35);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+/* ---------- Modal ---------- */
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:80;padding:16px}
 .overlay.show{display:flex}
-.modal{background:var(--white);border-radius:12px;width:100%;max-width:440px;max-height:90vh;overflow:auto;padding:20px}
-.modal h3{font-size:17px;margin-bottom:16px}
-.field{margin-bottom:13px}
-.field label{display:block;font-size:12px;color:var(--mid);margin-bottom:5px}
-.field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--bg);outline:none;color:var(--ink)}
-.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
-.field textarea{resize:vertical;min-height:54px}
-.field .big{font-size:26px;font-weight:800;text-align:center;padding:12px}
-.row2{display:flex;gap:10px}.row2>*{flex:1}
-.preview{display:flex;gap:12px;align-items:center;background:var(--bg);border-radius:9px;padding:10px;margin-bottom:13px}
-.preview img{width:60px;height:60px;border-radius:8px;object-fit:cover;background:var(--accent-bg)}
+.modal{background:#fff;border-radius:20px;width:100%;max-width:460px;max-height:90vh;overflow:auto;padding:24px;box-shadow:0 20px 50px rgba(15,23,42,.25)}
+.modal h3{font-size:19px;font-weight:800;margin-bottom:18px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:13px;font-weight:600;color:var(--mid);margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(15,23,42,.08)}
+.field input:disabled{background:var(--soft);color:var(--mid)}
+.field textarea{resize:vertical;min-height:60px}
+.field .big{font-size:28px;font-weight:800;text-align:center;padding:12px}
+.field .sub{font-size:12px;color:var(--mid);margin-top:5px}
+.row2{display:flex;gap:12px}.row2>*{flex:1}
+.preview{display:flex;gap:14px;align-items:center;background:var(--soft);border-radius:14px;padding:12px;margin-bottom:14px}
+.preview img{width:62px;height:62px;border-radius:10px;object-fit:cover;background:#fff}
 .preview .pstock{font-size:13px;color:var(--mid)}
-.preview .pstock b{font-size:22px;color:var(--ink);display:block}
-.modal .mbtns{display:flex;gap:10px;margin-top:18px}
-.modal .mbtns button{flex:1;padding:11px;border-radius:7px;font-weight:700}
-.modal .mbtns .cancel{background:var(--bg);color:var(--mid)}
-.modal .mbtns .save{background:var(--accent);color:#fff}
+.preview .pstock b{font-size:24px;color:var(--ink);display:block}
+.modal .mbtns{display:flex;gap:10px;margin-top:20px}
+.modal .mbtns button{flex:1;padding:12px;border-radius:12px;font-weight:700;font-size:15px}
+.modal .mbtns .cancel{background:#fff;border:1px solid var(--line);color:var(--ink2)}
+.modal .mbtns .cancel:hover{background:var(--soft)}
+.modal .mbtns .save{background:var(--primary);color:#fff}
+.modal .mbtns .save:hover{background:var(--primary-h)}
+.loginbox{max-width:380px}
+.loginbox .hint{font-size:13px;color:var(--mid);margin:-8px 0 14px;line-height:1.6}
 
-/* Log panel */
-.logpanel{position:fixed;top:0;right:0;height:100%;width:360px;max-width:90vw;background:var(--white);
-  border-left:1px solid var(--line);transform:translateX(100%);transition:transform .25s;z-index:60;
-  display:flex;flex-direction:column}
-.logpanel.show{transform:translateX(0)}
-.logpanel .lhead{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid var(--line)}
-.logpanel .lhead h3{font-size:16px}
-.lfilter{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
-.lfilter select,.lfilter input{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);outline:none;color:var(--ink);font-size:13px}
-.lfilter select:focus,.lfilter input:focus{border-color:var(--accent)}
-.lfilter-row{display:flex;align-items:center;gap:6px}
-.lfilter-row input{flex:1;min-width:0}
-.lfilter-row span{color:var(--mid);font-size:12px}
-.logpanel .llist{flex:1;overflow:auto;padding:8px}
-.logitem{display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--line)}
-.logitem img{width:42px;height:42px;border-radius:7px;object-fit:cover;background:var(--accent-bg)}
+/* ---------- Logs ---------- */
+.lfilter{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.lfilter select,.lfilter input{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;outline:none;font-size:14px}
+.lfilter select{min-width:160px}
+.lfilter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lfilter-row span{color:var(--mid);font-size:13px}
+.llist{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.logitem{display:flex;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:center}
+.logitem:last-child{border-bottom:none}
+.logitem img{width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--soft);flex:none}
 .logitem .linfo{flex:1;min-width:0}
-.logitem .lname{font-weight:600;font-size:13px}
-.logitem .lnote{font-size:12px;color:var(--mid)}
-.logitem .ltime{font-size:10px;color:var(--mid)}
-.logitem .ldelta{font-weight:800;font-size:16px;white-space:nowrap}
+.logitem .lname{font-weight:700;font-size:15px}
+.logitem .lnote{font-size:13px;color:var(--mid);margin-top:2px}
+.logitem .ltime{font-size:12px;color:var(--mute);margin-top:2px}
+.logitem .ldelta{font-weight:800;font-size:17px;white-space:nowrap}
 .logitem .ldelta.plus{color:var(--ok)}
 .logitem .ldelta.minus{color:var(--danger)}
-
-/* Toast */
-.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);opacity:0;
-  background:var(--ink);color:#fff;padding:11px 20px;border-radius:24px;font-size:13px;font-weight:600;
-  z-index:100;transition:.3s;pointer-events:none}
-.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-.toast.success{background:var(--ok)}
-.toast.error{background:var(--danger)}
-
-/* Login / user */
-header .user{font-size:12px;color:var(--mid);white-space:nowrap}
-.loginbox{max-width:360px}
-.loginbox .hint{font-size:12px;color:var(--mid);margin:-6px 0 14px;line-height:1.6}
-.logitem .ltype{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--bg);color:var(--mid);margin-right:4px;vertical-align:1px}
-.logitem.rev .lname,.logitem.rev .ldelta{text-decoration:line-through;opacity:.55}
-.logitem .lrev{align-self:center;flex:none;padding:4px 8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--mid);border:1px solid var(--line)}
+.logitem .ltype{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--mid);margin-right:6px;vertical-align:2px}
+.logitem.rev .lname,.logitem.rev .ldelta{text-decoration:line-through;opacity:.5}
+.logitem .lrev{flex:none;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:600;color:var(--ink2);border:1px solid var(--line);background:#fff}
 .logitem .lrev:hover{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-bg)}
-.field .sub{font-size:11px;color:var(--mid);margin-top:4px}
-/* Stocktake */
-.stpanel{position:fixed;inset:0;background:var(--bg);z-index:70;display:none;flex-direction:column}
-.stpanel.show{display:flex}
-.stpanel .sthead{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--white);border-bottom:1px solid var(--line);flex-wrap:wrap}
-.stpanel .sthead h3{font-size:16px;flex:1;min-width:120px}
-.stpanel .stbody{flex:1;overflow:auto;padding:14px 16px 100px}
-.stbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-.stbar .stat{padding:9px 14px}
-.strow{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
-.strow img{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--accent-bg);flex:none}
+
+/* ---------- Stocktake ---------- */
+.sthead{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.sthead h3{font-size:18px;font-weight:800;flex:1;min-width:160px}
+.stbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.strow{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.strow img{width:46px;height:46px;border-radius:10px;object-fit:cover;background:var(--soft);flex:none}
 .strow .sinfo{flex:1;min-width:0}
-.strow .sname{font-weight:700;font-size:14px}
-.strow .sbook{font-size:12px;color:var(--mid)}
-.strow input{width:84px;padding:9px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);font-size:18px;font-weight:700;text-align:center;outline:none;color:var(--ink)}
-.strow input:focus{border-color:var(--accent)}
-.strow .sdiff{width:54px;text-align:right;font-weight:800;font-size:15px;flex:none}
+.strow .sname{font-weight:700;font-size:15px}
+.strow .sbook{font-size:13px;color:var(--mid)}
+.strow input{width:90px;padding:10px 8px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:18px;font-weight:800;text-align:center;outline:none}
+.strow input:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(15,23,42,.08)}
+.strow .sdiff{width:54px;text-align:right;font-weight:800;font-size:16px;flex:none}
 .strow.done{border-left:4px solid var(--ok)}
-.strow.diff{border-left:4px solid var(--warn)}
-.strow .sdiff.minus{color:var(--danger)} .strow .sdiff.plus{color:var(--ok)} .strow .sdiff.zero{color:var(--mid)}
-.strow .sstate{font-size:10px;color:var(--mid);width:36px;text-align:center;flex:none}
-.stfoot{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 16px;background:var(--white);border-top:1px solid var(--line);z-index:71}
-.stfoot button{flex:1;padding:12px;border-radius:9px;font-weight:700}
-.stfoot .cancel{background:var(--bg);color:var(--mid)}
-.stfoot .save{background:var(--accent);color:#fff}
-.sthist{background:var(--white);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.strow.diff{border-left:4px solid var(--danger)}
+.strow .sdiff.minus{color:var(--danger)} .strow .sdiff.plus{color:var(--ok)} .strow .sdiff.zero{color:var(--mute)}
+.strow .sstate{font-size:12px;color:var(--ok);width:22px;text-align:center;flex:none}
+.stfoot{position:fixed;left:0;right:0;bottom:0;display:none;gap:12px;padding:14px 22px;background:#fff;border-top:1px solid var(--line);z-index:60}
+body.st-open .stfoot{display:flex}
+body.st-open .view.on{padding-bottom:100px}
+.stfoot button{flex:1;max-width:400px;padding:13px;border-radius:12px;font-weight:700;font-size:15px}
+.stfoot{justify-content:center}
+.stfoot .cancel{background:#fff;border:1px solid var(--line);color:var(--ink2)}
+.stfoot .save{background:var(--primary);color:#fff}
+.sthist{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
 .sthist .hinfo{flex:1}
 .sthist .htitle{font-weight:700}
-.sthist .hsub{font-size:12px;color:var(--mid)}
-.sthist .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--ok-bg);color:var(--ok)}
-.sthist .tag.cancel{background:var(--bg);color:var(--mid)}
-.stfilter{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-.stfilter button{padding:6px 12px;border-radius:16px;font-size:12px;font-weight:600;background:var(--white);border:1px solid var(--line);color:var(--mid)}
-.stfilter button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.sthist .hsub{font-size:13px;color:var(--mid);margin-top:3px}
+.sthist .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--ok-bg);color:var(--ok);margin-left:4px}
+.sthist .tag.cancel{background:var(--soft);color:var(--mid)}
+.stfilter{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.stfilter button{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#fff;border:1px solid var(--line);color:var(--mid)}
+.stfilter button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.stintro{color:var(--mid);margin-bottom:18px;line-height:1.8}
+.sthead + .stintro{margin-top:-4px}
+
+/* ---------- Toast / misc ---------- */
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);opacity:0;background:var(--ink);color:#fff;padding:12px 22px;border-radius:999px;font-size:14px;font-weight:600;z-index:100;transition:.3s;pointer-events:none;box-shadow:0 10px 30px rgba(15,23,42,.25);max-width:90vw;text-align:center}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.success{background:var(--ink)}
+.toast.error{background:var(--danger)}
+body.st-open .toast{bottom:96px}
+.empty{text-align:center;color:var(--mid);padding:56px 20px;grid-column:1/-1}
+.errbox{grid-column:1/-1;text-align:center;background:var(--danger-bg);color:var(--danger);border-radius:var(--radius);padding:40px 20px}
+.errbox b{display:block;font-size:17px;margin-bottom:6px}
+.errbox button{margin-top:14px;padding:10px 20px;border-radius:12px;background:var(--danger);color:#fff;font-weight:700}
+
 #printArea{display:none}
 @media print{
   body{background:#fff}
@@ -182,41 +197,102 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
   #printArea td.blank{width:80px}
   #printArea .sign{margin-top:24px;display:flex;gap:40px}
 }
-.empty{text-align:center;color:var(--mid);padding:60px 20px;grid-column:1/-1}
-.errbox{grid-column:1/-1;text-align:center;background:var(--danger-bg);color:var(--danger);border-radius:12px;padding:40px 20px}
-.errbox b{display:block;font-size:16px;margin-bottom:6px}
-.errbox button{margin-top:14px;padding:9px 18px;border-radius:7px;background:var(--danger);color:#fff;font-weight:700}
+
+/* ---------- Responsive ---------- */
+@media (max-width:900px){ .stats{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:640px){
+  .wrap{padding:0 18px}
+  .hero{padding:24px 0 22px}
+  .hero .top{flex-direction:column-reverse;gap:6px}
+  .hero .tools{justify-content:flex-start;margin-left:-8px}
+  .hero h1{font-size:28px}
+  .hero .sub{font-size:15px}
+  .stats{grid-template-columns:1fr;gap:12px;padding-top:22px}
+  .kpi{padding:18px 20px}
+  .tabs{display:flex;width:100%}
+  .tabs button{flex:1;padding:9px 10px}
+  .search{max-width:none}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .card .body{padding:12px 14px}
+  .card .qty{font-size:28px}
+  .card .actions{padding:10px 12px}
+  .logitem{padding:12px 14px;gap:10px}
+  .strow input{width:74px}
+  .stfoot{padding:12px 16px}
+}
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">🎁 贈品庫存</div>
-  <div class="search">
-    🔍<input id="search" placeholder="搜尋品名…" oninput="renderCards()">
-  </div>
-  <button class="hbtn" onclick="openLog()">異動記錄</button>
-  <button class="hbtn" onclick="openStocktake()">盤點</button>
-  <button class="hbtn" onclick="exportItems()">匯出</button>
-  <button class="hbtn" onclick="document.getElementById('importFile').click()">匯入</button>
-  <button class="hbtn" onclick="openAccount()">設定</button>
-  <span class="user" id="userLabel"></span>
-  <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importItems(event)">
-</header>
+<div class="wrap">
+  <section class="hero">
+    <div class="top">
+      <div class="titles">
+        <div class="eyebrow">INVENTORY &amp; GIFTS</div>
+        <h1>E Ink 贈品庫存</h1>
+        <p class="sub">登記拿出與補入、定期盤點，一頁看清庫存數量與低庫存狀況。</p>
+      </div>
+      <div class="tools">
+        <button class="hbtn" onclick="exportItems()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
+        <button class="hbtn" onclick="document.getElementById('importFile').click()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>匯入</button>
+        <button class="hbtn" onclick="openAccount()"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>設定</button>
+        <span class="user" id="userLabel"></span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="openDispenseModal()"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>拿出贈品</button>
+      <button class="btn" onclick="openRestockModal()"><svg class="ic" viewBox="0 0 24 24"><path d="M17 7 7 17"/><path d="M16 17H7V8"/></svg>補入庫存</button>
+      <button class="btn primary" onclick="openItemModal(null)"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新增品項</button>
+    </div>
+    <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importItems(event)">
+  </section>
 
-<div class="stats" id="stats"></div>
-<div class="grid" id="grid"><div class="empty">載入中…</div></div>
+  <div class="stats" id="stats"></div>
 
-<div class="fab">
-  <button class="dispense" onclick="openDispenseModal()">📤 拿出贈品</button>
-  <button class="restock" onclick="openRestockModal()">📥 補入庫存</button>
-  <button class="add" onclick="openItemModal(null)">＋ 新增品項</button>
+  <nav class="tabs" id="tabs">
+    <button data-tab="items" class="on" onclick="switchTab('items')">庫存品項</button>
+    <button data-tab="logs" onclick="switchTab('logs')">異動記錄</button>
+    <button data-tab="st" onclick="switchTab('st')">盤點</button>
+  </nav>
+
+  <section class="view on" id="view-items">
+    <div class="toolbar">
+      <div class="search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="search" placeholder="搜尋品名…" oninput="renderCards()"></div>
+    </div>
+    <div class="grid" id="grid"><div class="empty">載入中…</div></div>
+  </section>
+
+  <section class="view" id="view-logs">
+    <div class="lfilter" id="logPanel">
+      <select id="logFilterItem" onchange="renderLogs()"></select>
+      <div class="lfilter-row">
+        <input type="date" id="logFilterFrom" onchange="renderLogs()">
+        <span>～</span>
+        <input type="date" id="logFilterTo" onchange="renderLogs()">
+        <button class="hbtn" onclick="clearLogFilter()">清除</button>
+      </div>
+      <button class="hbtn" onclick="exportLogs()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
+    </div>
+    <div class="llist" id="logList"></div>
+  </section>
+
+  <section class="view" id="view-st">
+    <div id="stPanel">
+      <div class="sthead">
+        <h3 id="stTitle">盤點</h3>
+        <button class="hbtn" id="stPrintBtn" onclick="printStocktake()"><svg class="ic" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></svg>列印盤點表</button>
+        <button class="hbtn" id="stExportBtn" onclick="exportStocktake()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
+      </div>
+      <div id="stBody"></div>
+    </div>
+  </section>
 </div>
+<div class="stfoot" id="stFoot"></div>
 
 <!-- Dispense modal -->
 <div class="overlay" id="dispenseOverlay">
   <div class="modal">
-    <h3>📤 拿出贈品</h3>
+    <h3>拿出贈品</h3>
     <div class="field">
       <label>選擇品項</label>
       <select id="dispenseSelect" onchange="onDispenseSelect()"></select>
@@ -243,7 +319,7 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
 <!-- Restock modal -->
 <div class="overlay" id="restockOverlay">
   <div class="modal">
-    <h3>📥 補入庫存</h3>
+    <h3>補入庫存</h3>
     <div class="field">
       <label>選擇品項</label>
       <select id="restockSelect" onchange="onRestockSelect()"></select>
@@ -306,31 +382,10 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
   </div>
 </div>
 
-<!-- Log panel -->
-<div class="logpanel" id="logPanel">
-  <div class="lhead">
-    <h3>📋 異動記錄</h3>
-    <div style="display:flex;gap:6px">
-      <button class="hbtn" onclick="exportLogs()">匯出</button>
-      <button class="hbtn" onclick="document.getElementById('logPanel').classList.remove('show')">關閉</button>
-    </div>
-  </div>
-  <div class="lfilter">
-    <select id="logFilterItem" onchange="renderLogs()"></select>
-    <div class="lfilter-row">
-      <input type="date" id="logFilterFrom" onchange="renderLogs()">
-      <span>～</span>
-      <input type="date" id="logFilterTo" onchange="renderLogs()">
-      <button class="hbtn" onclick="clearLogFilter()">清除</button>
-    </div>
-  </div>
-  <div class="llist" id="logList"></div>
-</div>
-
 <!-- Login -->
 <div class="overlay" id="loginOverlay">
   <div class="modal loginbox">
-    <h3>🔐 管理者登入</h3>
+    <h3>管理者登入</h3>
     <div class="field">
       <label>名稱</label>
       <input type="text" id="loginName" maxlength="20" autocomplete="username" onkeydown="if(event.key==='Enter' && !needPass)doLogin()">
@@ -348,7 +403,7 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
 <!-- Change passcode -->
 <div class="overlay" id="passOverlay">
   <div class="modal loginbox">
-    <h3>🔑 設定密碼</h3>
+    <h3>設定密碼</h3>
     <div class="hint" id="passHint"></div>
     <div class="field" id="curPassField">
       <label>目前密碼</label>
@@ -372,7 +427,7 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
 <!-- Account -->
 <div class="overlay" id="accountOverlay">
   <div class="modal loginbox">
-    <h3>⚙️ 設定</h3>
+    <h3>設定</h3>
     <div class="hint" id="accountHint"></div>
     <div class="mbtns" style="flex-direction:column">
       <button class="cancel" onclick="closeOverlay('accountOverlay');openChangePass(false)">更改密碼</button>
@@ -382,17 +437,6 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
   </div>
 </div>
 
-<!-- Stocktake -->
-<div class="stpanel" id="stPanel">
-  <div class="sthead">
-    <h3 id="stTitle">📦 盤點</h3>
-    <button class="hbtn" id="stPrintBtn" onclick="printStocktake()">列印盤點表</button>
-    <button class="hbtn" id="stExportBtn" onclick="exportStocktake()">匯出</button>
-    <button class="hbtn" onclick="closeStocktake()">關閉</button>
-  </div>
-  <div class="stbody" id="stBody"></div>
-  <div class="stfoot" id="stFoot"></div>
-</div>
 <div id="printArea"></div>
 
 <div class="toast" id="toast"></div>
@@ -421,7 +465,7 @@ let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   token = t || ''; userName = name || '';
   lsSet('eink_token', token || null); lsSet('eink_user', userName || null);
-  document.getElementById('userLabel').textContent = userName ? '👤 '+userName : '';
+  document.getElementById('userLabel').textContent = userName ? userName : '';
 }
 
 /* ============ API 封裝（全部用 POST，token 不放網址） ============ */
@@ -489,15 +533,26 @@ async function loadItems(){
 }
 function isLow(it){ return it.低庫存警示>0 && it.數量<=it.低庫存警示; }
 
+const ICONS = {"box": "<path d=\"M21 8 12 3 3 8v8l9 5 9-5V8Z\"/><path d=\"m3 8 9 5 9-5\"/><path d=\"M12 13v8\"/>", "boxes": "<path d=\"M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z\"/><path d=\"m7 16.5-4.74-2.85\"/><path d=\"m7 16.5 5-3\"/><path d=\"M7 16.5v5.17\"/><path d=\"M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z\"/><path d=\"m17 16.5-5-3\"/><path d=\"m17 16.5 4.74-2.85\"/><path d=\"M17 16.5v5.17\"/><path d=\"M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z\"/><path d=\"M12 8 7.26 5.15\"/><path d=\"m12 8 4.74-2.85\"/><path d=\"M12 13.5V8\"/>", "alert": "<path d=\"M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/>", "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>"};
+const icon = n => `<svg class="ic" viewBox="0 0 24 24">${ICONS[n]}</svg>`;
 function renderStats(){
   const lowCount = items.filter(isLow).length;
+  const total = items.reduce((n,i)=> n + (Number(i.數量)||0), 0);
   let last = items.reduce((m,i)=> String(i.最後更新)>m ? String(i.最後更新) : m, '');
-  let t = last ? new Date(last) : null;
-  const hhmm = t && !isNaN(t) ? String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0') : '—';
-  document.getElementById('stats').innerHTML = `
-    <div class="stat"><span class="label">品項總數</span><span class="value">${items.length}</span></div>
-    <div class="stat low"><span class="label">低庫存警示</span><span class="value">${lowCount}</span></div>
-    <div class="stat"><span class="label">最後更新</span><span class="value">${esc(hhmm)}</span></div>`;
+  const lt = last ? fmtTime(last) : '';
+  const kpi = (ic, label, value, cls='', vcls='') => `<div class="kpi"><div class="icon ${cls}">${icon(ic)}</div><div><div class="label">${label}</div><div class="value ${vcls}">${value}</div></div></div>`;
+  document.getElementById('stats').innerHTML =
+    kpi('boxes','品項種類', items.length) +
+    kpi('box','庫存總量', total.toLocaleString()) +
+    kpi('alert','低庫存警示', lowCount, lowCount ? 'danger' : '') +
+    kpi('clock','最後更新', esc(lt) || '—', '', 'small');
+}
+function switchTab(t){
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
+  ['items','logs','st'].forEach(k=>document.getElementById('view-'+k).classList.toggle('on', k===t));
+  document.body.classList.toggle('st-open', t==='st');
+  if(t==='logs') loadLogs();
+  if(t==='st') loadStocktakeTab();
 }
 function renderCards(){
   const q = document.getElementById('search').value.trim().toLowerCase();
@@ -516,7 +571,7 @@ function buildCard(it){
     <div class="img">${src?`<img src="${esc(src)}" alt="" loading="lazy">`:''}</div>
     <div class="body">
       <div class="name">${esc(it.品名)}</div>
-      ${low?'<span class="lowtag">⚠ 低庫存</span>':''}
+      ${low?'<span class="lowtag">低庫存</span>':''}
       <div class="qtyrow"><span class="qty">${esc(it.數量)}</span><span class="unit">${esc(it.單位)}</span></div>
       <div class="note">${esc(it.備註)}</div>
       <div class="meta">更新：${esc(fmtTime(it.最後更新))}</div>
@@ -716,8 +771,8 @@ async function confirmDelete(id, name){
 
 /* ============ 異動記錄 ============ */
 let allLogs = [];
-async function openLog(){
-  document.getElementById('logPanel').classList.add('show');
+function openLog(){ switchTab('logs'); }
+async function loadLogs(){
   document.getElementById('logList').innerHTML = '<div class="empty">載入中…</div>';
   const res = await apiPost({action:'getLogs'});
   if(res.error){
@@ -882,19 +937,13 @@ function configApi(){
 /* ============ 盤點 ============ */
 let st = { open:null, details:[], history:[], view:null, viewDetails:[], filter:'all' };
 function stDetailMap(list){ const m={}; (list||[]).forEach(d=>m[String(d.品項ID)]=d); return m; }
-async function openStocktake(){
-  document.getElementById('stPanel').classList.add('show');
-  document.body.classList.add('st-open');
+function openStocktake(){ switchTab('st'); }
+async function loadStocktakeTab(){
   document.getElementById('stBody').innerHTML = '<div class="empty">載入中…</div>';
   document.getElementById('stFoot').innerHTML = '';
   await reloadStocktake();
 }
-function closeStocktake(){
-  document.getElementById('stPanel').classList.remove('show');
-  document.body.classList.remove('st-open');
-  st.view = null;
-  loadItems();
-}
+function closeStocktake(){ st.view = null; switchTab('items'); loadItems(); }
 async function reloadStocktake(){
   const res = await apiPost({action:'getStocktakes'});
   if(res.error){ document.getElementById('stBody').innerHTML = ''; showToast(res.error,'error'); return; }
@@ -915,7 +964,7 @@ function renderStocktake(){
 
   if(st.view){ // 歷史明細
     const v = st.view;
-    title.textContent = `📦 盤點 ${v.盤點ID}（${v.狀態}）`;
+    title.textContent = `盤點 ${v.盤點ID}（${v.狀態}）`;
     const rows = st.viewDetails.map(d=>`<div class="strow ${Number(d.差異)?'diff':'done'}">
       <div class="sinfo"><div class="sname">${esc(d.品名)}</div>
       <div class="sbook">帳面 ${esc(d.帳面數量)} → 實點 ${esc(d.實點數量)}${d.備註?' · '+esc(d.備註):''} · ${esc(d.輸入者)}</div></div>
@@ -934,15 +983,15 @@ function renderStocktake(){
   }
 
   if(!st.open){ // 沒有進行中：開始 + 歷史
-    title.textContent = '📦 盤點';
+    title.textContent = '盤點';
     const hist = st.history.map((h,i)=>`<div class="sthist">
       <div class="hinfo"><div class="htitle">${esc(h.盤點ID)} <span class="tag ${h.狀態==='已取消'?'cancel':''}">${esc(h.狀態)}</span></div>
       <div class="hsub">${esc(fmtTime(h.開始時間))} · ${esc(h.開始者)} · 已盤 ${esc(h.已盤)} · 差異 ${esc(h.有差異)} 項 · 調整 ${esc(h.調整合計)}${h.備註?' · '+esc(h.備註):''}</div></div>
       <button class="hbtn" data-i="${i}">查看</button></div>`).join('');
-    body.innerHTML = `<p style="color:var(--mid);margin-bottom:14px;line-height:1.7">
+    body.innerHTML = `<p class="stintro">
       開始後逐項輸入實際點到的數量，系統會自動算出差異。盤點期間照常可以拿出、補入。<br>
       按「完成盤點」才會一次調整庫存；完成前隨時可以修改或取消。</p>
-      <h4 style="margin:6px 0 10px">過去的盤點</h4>${hist || '<div class="empty" style="padding:20px">還沒有盤點記錄</div>'}`;
+      <h4 style="margin:6px 0 12px;font-size:16px">過去的盤點</h4>${hist || '<div class="empty" style="padding:20px">還沒有盤點記錄</div>'}`;
     body.querySelectorAll('.sthist button').forEach(b=> b.onclick = ()=>viewStocktake(st.history[+b.dataset.i]));
     foot.innerHTML = '<button class="save">＋ 開始盤點</button>';
     foot.firstChild.onclick = startStocktake;
@@ -951,7 +1000,7 @@ function renderStocktake(){
 
   // 進行中
   const o = st.open, map = stDetailMap(st.details);
-  title.textContent = `📦 盤點 ${o.盤點ID} 進行中`;
+  title.textContent = `盤點 ${o.盤點ID} 進行中`;
   const counted = items.filter(i=>map[i.ID]).length;
   const diffs = items.filter(i=>map[i.ID] && Number(map[i.ID].差異)!==0).length;
   const list = items.filter(i=> st.filter==='all' || (st.filter==='todo' && !map[i.ID]) || (st.filter==='diff' && map[i.ID] && Number(map[i.ID].差異)!==0));
@@ -1075,9 +1124,7 @@ function exportStocktake(){
 /* ============ 登入 / 密碼 ============ */
 function showLogin(msg){
   document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
-  document.getElementById('logPanel').classList.remove('show');
-  document.getElementById('stPanel').classList.remove('show');
-  document.body.classList.remove('st-open');
+  switchTab('items');
   document.getElementById('loginPass').value = '';
   document.getElementById('loginPassField').style.display = needPass ? '' : 'none';
   if(userName) document.getElementById('loginName').value = userName;
