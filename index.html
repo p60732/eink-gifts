@@ -515,6 +515,8 @@ async function postOnce(payload, ms){
     return await r.json();
   } finally { clearTimeout(timer); }
 }
+const GET_BOUNCE_MSG = '請使用贈品庫存網頁';   // 與 Code.gs doGet 的訊息相同
+function isGetBounce(res){ return !!res && res.error === GET_BOUNCE_MSG && !res.code; }
 async function apiPost(body){
   let res;
   const payload = JSON.stringify({...body, token});
@@ -523,6 +525,9 @@ async function apiPost(body){
     // 讀取：10 秒沒回應就自動重試一次；寫入不重試，避免重複登記
     try{ res = await postOnce(payload, isRead ? 10000 : 45000); }
     catch(e){ if(!isRead) throw e; res = await postOnce(payload, 20000); }
+    // Google 偶爾把 POST 轉成 GET（回的是 doGet 的訊息）：伺服器什麼都沒做，重送一次一定安全
+    if(isGetBounce(res)) res = await postOnce(payload, isRead ? 20000 : 45000);
+    if(isGetBounce(res)) res = { error:'連線不穩，請稍後再試' };
   }catch(e){
     console.warn(e);
     return { error: isRead ? '連線失敗，請檢查網路後重試' : '連線逾時，請重新整理確認是否已完成，再決定是否重做' };
