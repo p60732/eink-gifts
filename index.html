@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>E Ink 贈品庫存管理</title>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --ink:#0f172a; --ink2:#1e293b; --mid:#64748b; --mute:#94a3b8;
@@ -43,6 +42,7 @@ svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;str
 .hero .sub{color:var(--mid);font-size:16px;margin-top:8px;line-height:1.6}
 .hero .tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
 .user{font-size:13px;color:var(--mid);padding:0 6px;white-space:nowrap}
+.hero .tools .sync{font-size:12px;color:var(--mid);background:#f1f3f6;border-radius:999px;padding:2px 10px;margin-left:6px}
 .hero .actions{display:flex;gap:12px;margin-top:22px;flex-wrap:wrap}
 
 /* ---------- KPI cards ---------- */
@@ -254,6 +254,7 @@ body.st-open .toast{bottom:96px}
         <button class="hbtn" onclick="document.getElementById('importFile').click()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>匯入</button>
         <button class="hbtn" onclick="openAccount()"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>設定</button>
         <span class="user" id="userLabel"></span>
+        <span class="sync" id="syncTag" style="display:none">同步中…</span>
       </div>
     </div>
     <div class="actions">
@@ -543,9 +544,34 @@ function fmtTime(v){
 }
 
 /* ============ 載入 / 渲染 ============ */
+const ITEMS_CACHE = 'eink_items_cache';
+function saveItemsCache(){ lsSet(ITEMS_CACHE, JSON.stringify({ t: Date.now(), user: userName, items })); }
+/** 開頁時先顯示上次的庫存（標示同步中），同時向後端要最新資料 */
+function showCachedItems(){
+  if(!token) return false;
+  try{
+    const c = JSON.parse(lsGet(ITEMS_CACHE) || 'null');
+    if(!c || !Array.isArray(c.items) || c.user !== userName) return false;
+    items = c.items; renderStats(); renderCards(); setSyncing(true);
+    return true;
+  }catch(e){ return false; }
+}
+function setSyncing(on){
+  const el = document.getElementById('syncTag');
+  if(el) el.style.display = on ? '' : 'none';
+}
+function updateLocalItem(id, qty){
+  const it = items.find(i=>i.ID===id);
+  if(!it) return false;
+  it.數量 = qty; it.最後更新 = new Date().toISOString();
+  renderStats(); renderCards(); saveItemsCache();
+  return true;
+}
 async function loadItems(){
   const res = await apiPost({action:'getAll'});
+  setSyncing(false);
   if(res.error){
+    lsSet(ITEMS_CACHE, null);
     // 不回退假資料：顯示錯誤，避免照著過期數字發放
     items = [];
     renderStats();
@@ -564,7 +590,7 @@ async function loadItems(){
   passwordMode = res.passwordMode !== false;
   canManage = !!res.canManage;
   if(res.user) setSession(openMode ? '' : token, res.user);
-  renderStats(); renderCards();
+  renderStats(); renderCards(); saveItemsCache();
   return true;
 }
 function isLow(it){ return it.低庫存警示>0 && it.數量<=it.低庫存警示; }
@@ -636,7 +662,7 @@ function setPreviewImg(el, v){
 async function quickAdjust(id, delta, note){
   const res = await apiPost({action:'adjustQty', id, delta, note});
   if(res.error){ showToast(res.error,'error'); return null; }
-  await loadItems();
+  if(!updateLocalItem(id, res.newQty)) await loadItems();   // 只更新這一項，不重新讀整份
   return res.newQty;
 }
 
@@ -806,51 +832,61 @@ async function confirmDelete(id, name){
 }
 
 /* ============ 異動記錄 ============ */
+// 每次只向後端要 20 筆；篩選（品項、日期）也在後端做
 let allLogs = [];
+let logTotal = 0;
+let logSeq = 0;
 function openLog(){ switchTab('logs'); }
 const LOG_PAGE = 20;
-let logLimit = LOG_PAGE;
-function resetLogLimit(){ logLimit = LOG_PAGE; renderLogs(); }
-/** reset=true：回到預設（全部品項、不限日期、最新 20 筆） */
+function logQuery(){
+  const q = {};
+  const itemId = document.getElementById('logFilterItem').value;
+  const from = document.getElementById('logFilterFrom').value;
+  const to = document.getElementById('logFilterTo').value;
+  if(itemId) q.itemId = itemId;
+  if(from) q.fromTs = new Date(from+'T00:00:00').toISOString();
+  if(to) q.toTs = new Date(to+'T23:59:59.999').toISOString();
+  return q;
+}
+function fillLogItemSelect(){
+  const sel = document.getElementById('logFilterItem');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">全部品項</option>' +
+    items.map(i=>`<option value="${esc(i.ID)}">${esc(i.品名)}</option>`).join('');
+  sel.value = items.some(i=>i.ID===prev) ? prev : '';
+}
+function resetLogLimit(){ loadLogs(false); }
+/** reset=true：回到預設（全部品項、不限日期、最新 20 筆）；false：保留篩選重新讀第一頁 */
 async function loadLogs(reset = true){
-  if(reset){
-    logLimit = LOG_PAGE;
-    ['logFilterItem','logFilterFrom','logFilterTo'].forEach(id=>{ document.getElementById(id).value = ''; });
-  }
+  if(reset) ['logFilterFrom','logFilterTo'].forEach(id=>{ document.getElementById(id).value = ''; });
+  if(!items.length) await loadItems();
+  fillLogItemSelect();
+  if(reset) document.getElementById('logFilterItem').value = '';
   document.getElementById('logList').innerHTML = '<div class="empty">載入中…</div>';
-  const res = await apiPost({action:'getLogs'});
+  const seq = ++logSeq;
+  const res = await apiPost({action:'getLogs', limit:LOG_PAGE, offset:0, ...logQuery()});
+  if(seq !== logSeq) return;   // 使用者已換篩選，丟掉舊結果
   if(res.error){
-    allLogs = [];
+    allLogs = []; logTotal = 0;
     const list = document.getElementById('logList');
     list.innerHTML = '<div class="empty"></div>';
     list.firstChild.textContent = res.error;
     return;
   }
-  allLogs = res.logs || [];
-  // 填入品項下拉（只含有記錄的品項）
-  const sel = document.getElementById('logFilterItem');
-  const prev = sel.value;
-  const ids = [...new Set(allLogs.map(l=>String(l.品項ID)))];
-  sel.innerHTML = '<option value="">全部品項</option>' +
-    ids.map(id=>{ const it = items.find(i=>i.ID===id); const nm = it?it.品名:(allLogs.find(l=>String(l.品項ID)===id)||{}).品名||id; return `<option value="${esc(id)}">${esc(nm)}</option>`; }).join('');
-  sel.value = reset ? '' : prev;
+  allLogs = res.logs || []; logTotal = res.total || allLogs.length;
   renderLogs();
 }
-function filteredLogs(){
-  const itemId = document.getElementById('logFilterItem').value;
-  const from = document.getElementById('logFilterFrom').value;
-  const to = document.getElementById('logFilterTo').value;
-  return allLogs.filter(l=>{
-    if(itemId && String(l.品項ID)!==itemId) return false;
-    const d = new Date(l.時間);
-    if(from && d < new Date(from+'T00:00:00')) return false;
-    if(to && d > new Date(to+'T23:59:59')) return false;
-    return true;
-  });
+async function loadMoreLogs(btn){
+  btn.disabled = true; btn.textContent = '載入中…';
+  const seq = logSeq;
+  const res = await apiPost({action:'getLogs', limit:LOG_PAGE, offset:allLogs.length, ...logQuery()});
+  if(seq !== logSeq) return;
+  if(res.error){ showToast(res.error,'error'); btn.disabled = false; btn.textContent = '顯示更多'; return; }
+  allLogs = allLogs.concat(res.logs || []); logTotal = res.total || logTotal;
+  renderLogs();
 }
 function renderLogs(){
-  const all = filteredLogs();
-  const logs = all.slice(0, logLimit);
+  const logs = allLogs;
   const list = document.getElementById('logList');
   if(!logs.length){ list.innerHTML = '<div class="empty">沒有符合的記錄</div>'; return; }
   list.innerHTML = logs.map((l, idx)=>{
@@ -871,10 +907,10 @@ function renderLogs(){
       ${canRev?`<button class="lrev" data-idx="${idx}">沖銷</button>`:''}
     </div>`;
   }).join('');
-  list.insertAdjacentHTML('beforeend', `<div class="logmore">顯示 ${logs.length} / ${all.length} 筆${
-    all.length > logs.length ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
+  list.insertAdjacentHTML('beforeend', `<div class="logmore">顯示 ${logs.length} / ${logTotal} 筆${
+    logTotal > logs.length ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
   const more = document.getElementById('logMoreBtn');
-  if(more) more.onclick = ()=>{ logLimit += LOG_PAGE; renderLogs(); };
+  if(more) more.onclick = ()=>loadMoreLogs(more);
   list.querySelectorAll('img').forEach(img=>{ img.onerror = ()=>{ img.style.visibility='hidden'; }; });
   list.querySelectorAll('.lrev').forEach(btn=>{
     btn.onclick = ()=>reverseEntry(logs[+btn.dataset.idx], btn);
@@ -889,24 +925,37 @@ async function reverseEntry(l, btn){
   const res = await apiPost({action:'reverseLog', logId:l.記錄ID, reason});
   if(res.error){ showToast(res.error,'error'); btn.disabled=false; btn.textContent='沖銷'; return; }
   showToast(`已沖銷，${l.品名} 現為 ${res.newQty}`,'success');
-  await loadItems();
+  updateLocalItem(String(l.品項ID), res.newQty);
   await loadLogs(false);
 }
 function clearLogFilter(){
   document.getElementById('logFilterItem').value = '';
   document.getElementById('logFilterFrom').value = '';
   document.getElementById('logFilterTo').value = '';
-  resetLogLimit();
+  loadLogs(false);
 }
 
 /* ============ 匯出 / 匯入 Excel ============ */
 function todayStr(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
-function xlsxReady(){
-  if(typeof XLSX==='undefined'){ showToast('Excel 元件載入失敗，請重新整理','error'); return false; }
-  return true;
+/** Excel 元件要用時才載入（平常開頁不下載） */
+let xlsxPromise = null;
+function loadXlsx(){
+  if(typeof XLSX!=='undefined') return Promise.resolve(true);
+  if(!xlsxPromise) xlsxPromise = new Promise(resolve=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+    sc.onload = ()=>resolve(typeof XLSX!=='undefined');
+    sc.onerror = ()=>{ xlsxPromise = null; resolve(false); };
+    document.head.appendChild(sc);
+  });
+  return xlsxPromise;
 }
-function exportItems(){
-  if(!xlsxReady()) return;
+async function xlsxReady(){
+  if(await loadXlsx()) return true;
+  showToast('Excel 元件載入失敗，請檢查網路後再試','error'); return false;
+}
+async function exportItems(){
+  if(!await xlsxReady()) return;
   if(!items.length){ showToast('沒有資料可匯出','error'); return; }
   const rows = items.map(i=>({
     ID:i.ID, 品名:i.品名, 數量:i.數量, 單位:i.單位,
@@ -918,9 +967,12 @@ function exportItems(){
   XLSX.writeFile(wb, `贈品庫存_${todayStr()}.xlsx`);
   showToast('已匯出庫存 Excel','success');
 }
-function exportLogs(){
-  if(!xlsxReady()) return;
-  const logs = filteredLogs();
+async function exportLogs(){
+  if(!await xlsxReady()) return;
+  showToast('匯出中…','success');
+  const res = await apiPost({action:'getLogs', limit:5000, offset:0, ...logQuery()});
+  if(res.error){ showToast(res.error,'error'); return; }
+  const logs = res.logs || [];
   if(!logs.length){ showToast('沒有記錄可匯出','error'); return; }
   const ws = XLSX.utils.json_to_sheet(logs);
   const wb = XLSX.utils.book_new();
@@ -932,7 +984,7 @@ async function importItems(e){
   const f = e.target.files[0];
   if(!f) return;
   e.target.value = '';   // 允許重選同檔
-  if(!xlsxReady()) return;
+  if(!await xlsxReady()) return;
   if(f.size > IMPORT_MAX_BYTES){ showToast('檔案太大（上限 2MB）','error'); return; }
   try{
     const buf = await f.arrayBuffer();
@@ -971,6 +1023,7 @@ async function importItems(e){
 
 /* ============ 設定 API ============ */
 function configApi(){
+  if(openMode || !canManage){ showToast('只有可管理人員能修改後端網址','error'); return; }
   const cur = lsGet('eink_api_url')||'';
   const v = prompt('輸入 Google Apps Script Web App 網址（留空 = 使用預設後端）：', cur);
   if(v===null) return;
@@ -1161,8 +1214,8 @@ function printStocktake(){
     <div class="sign"><span>盤點人：＿＿＿＿＿＿</span><span>覆核：＿＿＿＿＿＿</span><span>日期：＿＿＿＿＿＿</span></div>`;
   window.print();
 }
-function exportStocktake(){
-  if(!xlsxReady() || !st.view) return;
+async function exportStocktake(){
+  if(!st.view || !await xlsxReady()) return;
   const rows = st.viewDetails.map(d=>({ 品項ID:d.品項ID, 品名:d.品名, 帳面數量:d.帳面數量, 實點數量:d.實點數量, 差異:d.差異, 備註:d.備註, 輸入者:d.輸入者, 輸入時間:d.輸入時間, 調整記錄ID:d.調整記錄ID }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{說明:'沒有明細'}]), '盤點明細');
@@ -1299,7 +1352,7 @@ function openAccount(){
   const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
   show('accPeople', !openMode && canManage);
   show('accPass', !openMode && passwordMode);
-  show('accApi', true);
+  show('accApi', !openMode && canManage);   // 後端網址只給可管理人員
   document.querySelector('#accountOverlay .mbtns .save').style.display = openMode ? 'none' : '';
   showOverlay('accountOverlay');
 }
@@ -1307,6 +1360,7 @@ async function doLogout(){
   closeOverlay('accountOverlay');
   await apiPost({action:'logout'});
   setSession('','');
+  lsSet(ITEMS_CACHE, null);
   items = []; renderStats();
   document.getElementById('grid').innerHTML = '';
   showLogin();
@@ -1332,6 +1386,7 @@ document.querySelectorAll('.overlay').forEach(o=>{
 
 /* ============ 啟動 ============ */
 setSession(token, userName);
+showCachedItems();   // 先顯示上次的庫存，背景同步
 loadItems();   // 需要登入時，後端回 AUTH 會自動顯示登入框
 </script>
 </body>

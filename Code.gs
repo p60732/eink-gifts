@@ -114,6 +114,7 @@ function configSheet_(){
 function ensureConfigDefaults_(){
   const sh = configSheet_();
   const keys = sh.getDataRange().getValues().map(r => r[0]);
+  CFG_ = null;
   CONFIG_DEFAULTS.forEach(d => {
     if (keys.indexOf(d[0]) >= 0) return;
     sh.appendRow(d);
@@ -122,18 +123,24 @@ function ensureConfigDefaults_(){
 }
 function loginRequired_(){ return getConfig_('需要登入').toUpperCase() === 'TRUE'; }
 function passwordRequired_(){ return getConfig_('登入需要密碼').toUpperCase() === 'TRUE'; }
-function getConfig_(key){
-  const vals = configSheet_().getDataRange().getValues();
-  for (let i = 1; i < vals.length; i++) if (vals[i][0] === key) return String(vals[i][1] || '').trim();
-  return '';
+/** 設定每個請求只讀一次（doPost 開頭會清掉） */
+let CFG_ = null;
+function config_(){
+  if (!CFG_) {
+    CFG_ = {};
+    configSheet_().getDataRange().getValues().slice(1).forEach(r => { if (r[0] !== '') CFG_[r[0]] = String(r[1] == null ? '' : r[1]).trim(); });
+  }
+  return CFG_;
 }
+function getConfig_(key){ return config_()[key] || ''; }
 function setConfig_(key, value){
   const sh = configSheet_();
   const vals = sh.getDataRange().getValues();
   for (let i = 1; i < vals.length; i++) {
-    if (vals[i][0] === key) { sh.getRange(i + 1, 2).setValue(value); return; }
+    if (vals[i][0] === key) { sh.getRange(i + 1, 2).setValue(value); CFG_ = null; return; }
   }
   sh.appendRow([key, value, '']);
+  CFG_ = null;
 }
 
 function adminsSheet_(){
@@ -165,6 +172,7 @@ function ensureAdminSchema_(){
     sh.getRange(2, 8, n, 1).setValues(vals.map(r => [String(r[0]).trim() !== '' && r[1] === true]));
   }
   sh.getRange(2, 8, Math.max(n, 1) + 49, 1).insertCheckboxes();
+  clearAdminIndex_();
 }
 
 function imageFolder_(){
@@ -273,8 +281,8 @@ function personName_(v){
 }
 function canManage_(s){
   if (!s || s.open) return false;
-  const a = findAdmin_(s.name);
-  return !!(a && a.r[1] === true && a.r[7] === true);
+  const a = adminIndex_()[s.name];
+  return !!(a && a[0] === true && a[1] === true);
 }
 function requireManage_(s){ if (!canManage_(s)) throw userError_('沒有管理人員的權限'); }
 function readAdmins_(){
@@ -298,6 +306,20 @@ function findAdmin_(name){
   return null;
 }
 
+/** 人員權限索引（名稱 → [啟用, 可管理]），快取 60 秒；在網頁上改人員時會立即清除 */
+const ADM_IDX_KEY = 'adm_idx';
+const ADM_IDX_TTL = 60;
+function adminIndex_(){
+  const c = CacheService.getScriptCache();
+  const raw = c.get(ADM_IDX_KEY);
+  if (raw) return JSON.parse(raw);
+  const idx = {};
+  readAdmins_().forEach(x => { idx[String(x.r[0]).trim()] = [x.r[1] === true, x.r[7] === true]; });
+  c.put(ADM_IDX_KEY, JSON.stringify(idx), ADM_IDX_TTL);
+  return idx;
+}
+function clearAdminIndex_(){ CacheService.getScriptCache().remove(ADM_IDX_KEY); }
+
 function newSession_(name, mustChange){
   const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
   CacheService.getScriptCache().put('s_' + token, JSON.stringify({ n: name, mc: !!mustChange }), SESSION_TTL);
@@ -311,8 +333,8 @@ function auth_(token){
   const raw = CacheService.getScriptCache().get('s_' + t);
   if (!raw) throw userError_('登入已逾時，請重新登入', 'AUTH');
   const s = JSON.parse(raw);
-  const a = findAdmin_(s.n);
-  if (!a || a.r[1] !== true) { CacheService.getScriptCache().remove('s_' + t); throw userError_('帳號已停用', 'AUTH'); }
+  const a = adminIndex_()[s.n];
+  if (!a || a[0] !== true) { CacheService.getScriptCache().remove('s_' + t); throw userError_('帳號已停用', 'AUTH'); }
   return { name: s.n, mustChange: s.mc && passwordRequired_(), token: t };
 }
 
@@ -389,6 +411,46 @@ function log_(type, id, name, delta, after, note, operator, reverseOf){
 }
 
 function readLogs_(){ return rowsToObjects_(logsSheet_().getDataRange().getValues()); }
+
+/** 分頁讀取：limit 預設 20（上限 5000）、offset、itemId、fromTs/toTs（ISO 時間） */
+function readLogsPage_(b){
+  const limit = b.limit == null ? 20 : int_(b.limit, 1, 5000, '筆數');
+  const offset = b.offset == null ? 0 : int_(b.offset, 0, 10000000, '起始位置');
+  const itemId = b.itemId ? id_(b.itemId) : '';
+  const fromTs = b.fromTs ? tsMs_(b.fromTs) : null, toTs = b.toTs ? tsMs_(b.toTs) : null;
+  const sh = logsSheet_();
+  const n = sh.getLastRow() - 1;
+  if (n < 1) return { logs: [], total: 0 };
+  const W = LOG_HEADERS.length;
+  let rows, total;
+  if (!itemId && fromTs == null && toTs == null) {
+    total = n;
+    const end = n - offset;                       // 由新到舊：最後一列最新
+    if (end < 1) return { logs: [], total };
+    const cnt = Math.min(limit, end);
+    rows = sh.getRange(2 + end - cnt, 1, cnt, W).getValues().reverse();
+  } else {
+    let all = sh.getRange(2, 1, n, W).getValues().filter(r => r[0] !== '');
+    if (itemId) all = all.filter(r => String(r[1]) === itemId);
+    if (fromTs != null || toTs != null) all = all.filter(r => {
+      const t = r[0] instanceof Date ? r[0].getTime() : Date.parse(r[0]);
+      return (fromTs == null || t >= fromTs) && (toTs == null || t <= toTs);
+    });
+    total = all.length;
+    rows = all.reverse().slice(offset, offset + limit);
+  }
+  // 只讀「記錄ID／沖銷對象」兩欄來標示已沖銷
+  const revBy = {};
+  sh.getRange(2, 9, n, 2).getValues().forEach(p => { if (p[1]) revBy[p[1]] = p[0]; });
+  const logs = rowsToObjects_([LOG_HEADERS].concat(rows.filter(r => r[0] !== '')));
+  logs.forEach(l => { l['已沖銷'] = revBy[l['記錄ID']] || ''; });
+  return { logs, total };
+}
+function tsMs_(v){
+  const t = Date.parse(String(v));
+  if (isNaN(t)) throw userError_('日期格式錯誤');
+  return t;
+}
 
 /* ============ 盤點 ============ */
 function sheetWithHeaders_(name, headers){
@@ -479,6 +541,7 @@ const ACTIONS = {
       sh.getRange(t.row, 1, 1, 2).setValues([[ name, enabled ]]);
       sh.getRange(t.row, 7, 1, 2).setValues([[ note, manage ]]);
     }
+    clearAdminIndex_();
     const out = { success: true, initCode: code };
     if (orig && orig === s.name && name !== orig) {   // 改自己的名字：換發新的登入
       CacheService.getScriptCache().remove('s_' + s.token);
@@ -499,15 +562,8 @@ const ACTIONS = {
     return { success: true, initCode: code };
   },
 
-  getLogs: (s, b) => {
-    let logs = readLogs_();
-    const reversed = {};
-    logs.forEach(l => { if (l['沖銷對象']) reversed[l['沖銷對象']] = l['記錄ID']; });
-    logs.forEach(l => { l['已沖銷'] = reversed[l['記錄ID']] || ''; });
-    if (b.itemId) logs = logs.filter(l => String(l['品項ID']) === String(b.itemId));
-    logs.reverse();
-    return { logs: logs.slice(0, 1000) };
-  },
+  /** 異動記錄（新到舊）。沒有篩選時只讀需要的那幾列 */
+  getLogs: (s, b) => readLogsPage_(b),
 
   changePasscode: (s, b) => changePasscode_(s, b),
 
@@ -676,19 +732,34 @@ function doGet(){
 }
 
 /* ============ POST ============ */
+/** 只讀取、不寫入的動作：不必排隊等鎖 */
+const READ_ONLY = ['getAll','getLogs','getStocktakes','getStocktakeDetail','listAdmins'];
+const SCHEMA_KEY = 'schema_ok_v1';
+
+/** 格式檢查（補欄位、補設定列）只在快取過期時做一次 */
+function ensureSchemaOnce_(lock){
+  const c = CacheService.getScriptCache();
+  if (c.get(SCHEMA_KEY)) return;
+  if (!lock.hasLock()) lock.waitLock(20000);
+  ensureLogSchema_();
+  ensureConfigDefaults_();
+  ensureAdminSchema_();
+  c.put(SCHEMA_KEY, '1', 21600);
+}
+
 function doPost(e){
   const lock = LockService.getScriptLock();
+  CFG_ = null;
   try {
-    lock.waitLock(20000);
     let body;
     try { body = JSON.parse(e.postData.contents); } catch (x) { throw userError_('資料格式錯誤'); }
     const action = String(body.action || '');
-    ensureLogSchema_();
-    ensureConfigDefaults_();
-    ensureAdminSchema_();
+    if (action !== 'login' && !Object.prototype.hasOwnProperty.call(ACTIONS, action)) throw userError_('未知的操作');
+    const readOnly = READ_ONLY.indexOf(action) >= 0;
+    if (!readOnly) lock.waitLock(20000);
+    ensureSchemaOnce_(lock);
 
     if (action === 'login') return json_(login_(body));
-    if (!Object.prototype.hasOwnProperty.call(ACTIONS, action)) throw userError_('未知的操作');
 
     let s;
     if (loginRequired_()) s = auth_(body.token);
@@ -707,6 +778,6 @@ function doPost(e){
     console.error(err);
     return json_({ error: '操作失敗，請稍後再試' });
   } finally {
-    lock.releaseLock();
+    if (lock.hasLock()) lock.releaseLock();
   }
 }
