@@ -27,7 +27,15 @@ header .logo{font-weight:800;font-size:16px;color:var(--accent);white-space:nowr
 header .search{flex:1;max-width:360px;display:flex;align-items:center;background:var(--bg);
   border:1px solid var(--line);border-radius:7px;padding:0 10px}
 header .search input{flex:1;border:none;background:none;padding:8px 6px;outline:none;color:var(--ink)}
-header .hbtn{padding:8px 12px;border-radius:7px;background:var(--accent-bg);color:var(--accent);font-weight:600;font-size:13px}
+header .hbtn{padding:8px 12px;border-radius:7px;background:var(--accent-bg);color:var(--accent);font-weight:600;font-size:13px;white-space:nowrap}
+.hbtn{white-space:nowrap}
+@media (max-width:640px){
+  header{height:auto;flex-wrap:wrap;gap:8px;padding:8px 12px}
+  header .search{order:9;flex:1 1 100%;max-width:none}
+  header .hbtn{padding:7px 10px;font-size:12px}
+  header .user{margin-left:auto}
+}
+body.st-open .toast{bottom:92px}
 header .hbtn:hover{filter:brightness(.97)}
 
 /* Stats bar */
@@ -128,6 +136,52 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
 .logitem .lrev{align-self:center;flex:none;padding:4px 8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--mid);border:1px solid var(--line)}
 .logitem .lrev:hover{background:var(--danger-bg);color:var(--danger);border-color:var(--danger-bg)}
 .field .sub{font-size:11px;color:var(--mid);margin-top:4px}
+/* Stocktake */
+.stpanel{position:fixed;inset:0;background:var(--bg);z-index:70;display:none;flex-direction:column}
+.stpanel.show{display:flex}
+.stpanel .sthead{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--white);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.stpanel .sthead h3{font-size:16px;flex:1;min-width:120px}
+.stpanel .stbody{flex:1;overflow:auto;padding:14px 16px 100px}
+.stbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.stbar .stat{padding:9px 14px}
+.strow{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.strow img{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--accent-bg);flex:none}
+.strow .sinfo{flex:1;min-width:0}
+.strow .sname{font-weight:700;font-size:14px}
+.strow .sbook{font-size:12px;color:var(--mid)}
+.strow input{width:84px;padding:9px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);font-size:18px;font-weight:700;text-align:center;outline:none;color:var(--ink)}
+.strow input:focus{border-color:var(--accent)}
+.strow .sdiff{width:54px;text-align:right;font-weight:800;font-size:15px;flex:none}
+.strow.done{border-left:4px solid var(--ok)}
+.strow.diff{border-left:4px solid var(--warn)}
+.strow .sdiff.minus{color:var(--danger)} .strow .sdiff.plus{color:var(--ok)} .strow .sdiff.zero{color:var(--mid)}
+.strow .sstate{font-size:10px;color:var(--mid);width:36px;text-align:center;flex:none}
+.stfoot{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 16px;background:var(--white);border-top:1px solid var(--line);z-index:71}
+.stfoot button{flex:1;padding:12px;border-radius:9px;font-weight:700}
+.stfoot .cancel{background:var(--bg);color:var(--mid)}
+.stfoot .save{background:var(--accent);color:#fff}
+.sthist{background:var(--white);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.sthist .hinfo{flex:1}
+.sthist .htitle{font-weight:700}
+.sthist .hsub{font-size:12px;color:var(--mid)}
+.sthist .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--ok-bg);color:var(--ok)}
+.sthist .tag.cancel{background:var(--bg);color:var(--mid)}
+.stfilter{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.stfilter button{padding:6px 12px;border-radius:16px;font-size:12px;font-weight:600;background:var(--white);border:1px solid var(--line);color:var(--mid)}
+.stfilter button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#printArea{display:none}
+@media print{
+  body{background:#fff}
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block;color:#000;font-size:12px}
+  #printArea h2{font-size:16px;margin-bottom:4px}
+  #printArea p{margin-bottom:10px}
+  #printArea table{width:100%;border-collapse:collapse}
+  #printArea th,#printArea td{border:1px solid #333;padding:7px 6px;text-align:left}
+  #printArea td.num{text-align:right;width:70px}
+  #printArea td.blank{width:80px}
+  #printArea .sign{margin-top:24px;display:flex;gap:40px}
+}
 .empty{text-align:center;color:var(--mid);padding:60px 20px;grid-column:1/-1}
 .errbox{grid-column:1/-1;text-align:center;background:var(--danger-bg);color:var(--danger);border-radius:12px;padding:40px 20px}
 .errbox b{display:block;font-size:16px;margin-bottom:6px}
@@ -142,6 +196,7 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
     🔍<input id="search" placeholder="搜尋品名…" oninput="renderCards()">
   </div>
   <button class="hbtn" onclick="openLog()">異動記錄</button>
+  <button class="hbtn" onclick="openStocktake()">盤點</button>
   <button class="hbtn" onclick="exportItems()">匯出</button>
   <button class="hbtn" onclick="document.getElementById('importFile').click()">匯入</button>
   <button class="hbtn" onclick="openAccount()">設定</button>
@@ -326,6 +381,19 @@ header .user{font-size:12px;color:var(--mid);white-space:nowrap}
     </div>
   </div>
 </div>
+
+<!-- Stocktake -->
+<div class="stpanel" id="stPanel">
+  <div class="sthead">
+    <h3 id="stTitle">📦 盤點</h3>
+    <button class="hbtn" id="stPrintBtn" onclick="printStocktake()">列印盤點表</button>
+    <button class="hbtn" id="stExportBtn" onclick="exportStocktake()">匯出</button>
+    <button class="hbtn" onclick="closeStocktake()">關閉</button>
+  </div>
+  <div class="stbody" id="stBody"></div>
+  <div class="stfoot" id="stFoot"></div>
+</div>
+<div id="printArea"></div>
 
 <div class="toast" id="toast"></div>
 
@@ -811,10 +879,205 @@ function configApi(){
   location.reload();
 }
 
+/* ============ 盤點 ============ */
+let st = { open:null, details:[], history:[], view:null, viewDetails:[], filter:'all' };
+function stDetailMap(list){ const m={}; (list||[]).forEach(d=>m[String(d.品項ID)]=d); return m; }
+async function openStocktake(){
+  document.getElementById('stPanel').classList.add('show');
+  document.body.classList.add('st-open');
+  document.getElementById('stBody').innerHTML = '<div class="empty">載入中…</div>';
+  document.getElementById('stFoot').innerHTML = '';
+  await reloadStocktake();
+}
+function closeStocktake(){
+  document.getElementById('stPanel').classList.remove('show');
+  document.body.classList.remove('st-open');
+  st.view = null;
+  loadItems();
+}
+async function reloadStocktake(){
+  const res = await apiPost({action:'getStocktakes'});
+  if(res.error){ document.getElementById('stBody').innerHTML = ''; showToast(res.error,'error'); return; }
+  st.open = res.open; st.details = res.details||[]; st.history = res.history||[]; st.view = null;
+  if(!items.length) await loadItems();
+  renderStocktake();
+}
+function stDiffHtml(d){
+  if(d==null || d==='') return '<div class="sdiff zero">—</div>';
+  const n = Number(d);
+  return `<div class="sdiff ${n>0?'plus':n<0?'minus':'zero'}">${n>0?'+':''}${n}</div>`;
+}
+function renderStocktake(){
+  const body = document.getElementById('stBody'), foot = document.getElementById('stFoot');
+  const title = document.getElementById('stTitle');
+  document.getElementById('stPrintBtn').style.display = st.open ? '' : 'none';
+  document.getElementById('stExportBtn').style.display = st.view ? '' : 'none';
+
+  if(st.view){ // 歷史明細
+    const v = st.view;
+    title.textContent = `📦 盤點 ${v.盤點ID}（${v.狀態}）`;
+    const rows = st.viewDetails.map(d=>`<div class="strow ${Number(d.差異)?'diff':'done'}">
+      <div class="sinfo"><div class="sname">${esc(d.品名)}</div>
+      <div class="sbook">帳面 ${esc(d.帳面數量)} → 實點 ${esc(d.實點數量)}${d.備註?' · '+esc(d.備註):''} · ${esc(d.輸入者)}</div></div>
+      ${stDiffHtml(d.差異)}</div>`).join('');
+    body.innerHTML = `<div class="stbar">
+      <div class="stat"><span class="label">開始</span><span class="value">${esc(fmtTime(v.開始時間))}</span></div>
+      <div class="stat"><span class="label">完成</span><span class="value">${esc(fmtTime(v.完成時間))||'—'}</span></div>
+      <div class="stat"><span class="label">已盤</span><span class="value">${esc(v.已盤)}</span></div>
+      <div class="stat low"><span class="label">有差異</span><span class="value">${esc(v.有差異)}</span></div>
+      <div class="stat"><span class="label">調整合計</span><span class="value">${esc(v.調整合計)}</span></div></div>
+      ${v.備註?`<p style="margin-bottom:10px;color:var(--mid)">${esc(v.備註)}</p>`:''}
+      ${rows || '<div class="empty">沒有輸入任何實點</div>'}`;
+    foot.innerHTML = '<button class="cancel">返回</button>';
+    foot.firstChild.onclick = ()=>{ st.view=null; renderStocktake(); };
+    return;
+  }
+
+  if(!st.open){ // 沒有進行中：開始 + 歷史
+    title.textContent = '📦 盤點';
+    const hist = st.history.map((h,i)=>`<div class="sthist">
+      <div class="hinfo"><div class="htitle">${esc(h.盤點ID)} <span class="tag ${h.狀態==='已取消'?'cancel':''}">${esc(h.狀態)}</span></div>
+      <div class="hsub">${esc(fmtTime(h.開始時間))} · ${esc(h.開始者)} · 已盤 ${esc(h.已盤)} · 差異 ${esc(h.有差異)} 項 · 調整 ${esc(h.調整合計)}${h.備註?' · '+esc(h.備註):''}</div></div>
+      <button class="hbtn" data-i="${i}">查看</button></div>`).join('');
+    body.innerHTML = `<p style="color:var(--mid);margin-bottom:14px;line-height:1.7">
+      開始後逐項輸入實際點到的數量，系統會自動算出差異。盤點期間照常可以拿出、補入。<br>
+      按「完成盤點」才會一次調整庫存；完成前隨時可以修改或取消。</p>
+      <h4 style="margin:6px 0 10px">過去的盤點</h4>${hist || '<div class="empty" style="padding:20px">還沒有盤點記錄</div>'}`;
+    body.querySelectorAll('.sthist button').forEach(b=> b.onclick = ()=>viewStocktake(st.history[+b.dataset.i]));
+    foot.innerHTML = '<button class="save">＋ 開始盤點</button>';
+    foot.firstChild.onclick = startStocktake;
+    return;
+  }
+
+  // 進行中
+  const o = st.open, map = stDetailMap(st.details);
+  title.textContent = `📦 盤點 ${o.盤點ID} 進行中`;
+  const counted = items.filter(i=>map[i.ID]).length;
+  const diffs = items.filter(i=>map[i.ID] && Number(map[i.ID].差異)!==0).length;
+  const list = items.filter(i=> st.filter==='all' || (st.filter==='todo' && !map[i.ID]) || (st.filter==='diff' && map[i.ID] && Number(map[i.ID].差異)!==0));
+  body.innerHTML = `<div class="stbar">
+      <div class="stat"><span class="label">進度</span><span class="value">${counted} / ${items.length}</span></div>
+      <div class="stat low"><span class="label">有差異</span><span class="value">${diffs}</span></div>
+      <div class="stat"><span class="label">開始</span><span class="value">${esc(fmtTime(o.開始時間))}</span></div></div>
+    <div class="stfilter">
+      <button data-f="all" class="${st.filter==='all'?'on':''}">全部</button>
+      <button data-f="todo" class="${st.filter==='todo'?'on':''}">未盤 ${items.length-counted}</button>
+      <button data-f="diff" class="${st.filter==='diff'?'on':''}">有差異 ${diffs}</button></div>
+    <div id="stList">${list.map(it=>{
+      const d = map[it.ID]; const src = imgSrc(it.圖片);
+      const cls = d ? (Number(d.差異)?'diff':'done') : '';
+      return `<div class="strow ${cls}" data-id="${esc(it.ID)}">
+        ${src?`<img src="${esc(src)}" alt="" loading="lazy">`:'<img alt="" style="visibility:hidden">'}
+        <div class="sinfo"><div class="sname">${esc(it.品名)}</div>
+        <div class="sbook">帳面 <b>${esc(it.數量)}</b> ${esc(it.單位)}${d?` · 輸入時帳面 ${esc(d.帳面數量)}`:''}</div></div>
+        <input type="number" inputmode="numeric" min="0" placeholder="實點" value="${d?esc(d.實點數量):''}">
+        ${stDiffHtml(d?d.差異:null)}
+        <div class="sstate">${d?'✓':''}</div></div>`;
+    }).join('') || '<div class="empty">沒有符合的品項</div>'}</div>`;
+  body.querySelectorAll('.stfilter button').forEach(b=> b.onclick = ()=>{ st.filter=b.dataset.f; renderStocktake(); });
+  body.querySelectorAll('.strow img').forEach(img=>{ img.onerror=()=>{ img.style.visibility='hidden'; }; });
+  body.querySelectorAll('.strow input').forEach(inp=>{
+    inp.onchange = ()=>saveCount(inp.closest('.strow').dataset.id, inp);
+    inp.onkeydown = e=>{ if(e.key==='Enter'){ inp.blur(); const rows=[...body.querySelectorAll('.strow input')]; const n=rows[rows.indexOf(inp)+1]; if(n) n.focus(); } };
+  });
+  foot.innerHTML = '<button class="cancel">取消盤點</button><button class="save">完成盤點</button>';
+  foot.children[0].onclick = cancelStocktake;
+  foot.children[1].onclick = finalizeStocktake;
+}
+async function startStocktake(){
+  const note = prompt('開始新的盤點。\n備註（選填，例如「2026 Q3 盤點」）：', '');
+  if(note===null) return;
+  const res = await apiPost({action:'startStocktake', note});
+  if(res.error){ showToast(res.error,'error'); return; }
+  showToast(`已建立盤點單 ${res.stId}`,'success');
+  st.filter = 'all';
+  await reloadStocktake();
+}
+async function saveCount(itemId, inp){
+  const v = inp.value.trim();
+  if(v===''){ return; }
+  const n = Number(v);
+  if(!Number.isInteger(n) || n<0){ showToast('實點數量需為 0 以上的整數','error'); return; }
+  const row = inp.closest('.strow'); const state = row.querySelector('.sstate');
+  state.textContent = '…';
+  const res = await apiPost({action:'saveCount', stId:st.open.盤點ID, itemId, counted:n});
+  if(res.error){ state.textContent = '!'; showToast(res.error,'error'); return; }
+  const it = items.find(i=>i.ID===itemId);
+  st.details = st.details.filter(d=>String(d.品項ID)!==itemId);
+  st.details.push({品項ID:itemId, 品名:it?it.品名:'', 帳面數量:res.book, 實點數量:res.counted, 差異:res.diff});
+  // 只更新這一列與統計，避免打斷連續輸入
+  row.className = 'strow ' + (res.diff ? 'diff' : 'done');
+  row.querySelector('.sdiff').outerHTML = stDiffHtml(res.diff);
+  state.textContent = '✓';
+  const map = stDetailMap(st.details);
+  const counted = items.filter(i=>map[i.ID]).length, diffs = items.filter(i=>map[i.ID] && Number(map[i.ID].差異)!==0).length;
+  const vals = document.querySelectorAll('#stBody .stbar .value');
+  if(vals[0]) vals[0].textContent = `${counted} / ${items.length}`;
+  if(vals[1]) vals[1].textContent = diffs;
+  const fb = document.querySelectorAll('#stBody .stfilter button');
+  if(fb[1]) fb[1].textContent = `未盤 ${items.length-counted}`;
+  if(fb[2]) fb[2].textContent = `有差異 ${diffs}`;
+}
+async function finalizeStocktake(){
+  const map = stDetailMap(st.details);
+  const counted = items.filter(i=>map[i.ID]);
+  if(!counted.length){ showToast('還沒有輸入任何實點數量','error'); return; }
+  const diffs = counted.filter(i=>Number(map[i.ID].差異)!==0);
+  const lines = diffs.slice(0,12).map(i=>`・${i.品名}：${Number(map[i.ID].差異)>0?'+':''}${map[i.ID].差異}`).join('\n');
+  const todo = items.length - counted.length;
+  const msg = `完成盤點 ${st.open.盤點ID}？\n\n已盤 ${counted.length} 項${todo?`（還有 ${todo} 項未盤，不會調整）`:''}\n`
+    + (diffs.length ? `將調整 ${diffs.length} 項：\n${lines}${diffs.length>12?'\n…':''}` : '全部相符，不需調整。')
+    + '\n\n完成後無法修改。';
+  if(!confirm(msg)) return;
+  const btn = document.querySelector('#stFoot .save'); btn.disabled = true; btn.textContent = '處理中…';
+  const res = await apiPost({action:'finalizeStocktake', stId:st.open.盤點ID});
+  btn.disabled = false; btn.textContent = '完成盤點';
+  if(res.error){ showToast(res.error,'error'); return; }
+  showToast(`盤點完成，調整 ${res.adjusted} 項`,'success');
+  await loadItems();
+  await reloadStocktake();
+}
+async function cancelStocktake(){
+  if(!confirm(`取消盤點 ${st.open.盤點ID}？\n已輸入的實點數量會保留在記錄中，但不會調整庫存。`)) return;
+  const res = await apiPost({action:'cancelStocktake', stId:st.open.盤點ID});
+  if(res.error){ showToast(res.error,'error'); return; }
+  showToast('已取消盤點','success');
+  await reloadStocktake();
+}
+async function viewStocktake(h){
+  const res = await apiPost({action:'getStocktakeDetail', stId:h.盤點ID});
+  if(res.error){ showToast(res.error,'error'); return; }
+  st.view = res.stocktake; st.viewDetails = res.details||[];
+  renderStocktake();
+}
+function printStocktake(){
+  if(!st.open) return;
+  const map = stDetailMap(st.details);
+  const d = new Date();
+  const area = document.getElementById('printArea');
+  area.innerHTML = `<h2>贈品盤點表　${esc(st.open.盤點ID)}</h2>
+    <p>列印時間：${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}　${st.open.備註?'備註：'+esc(st.open.備註):''}</p>
+    <table><thead><tr><th>#</th><th>品名</th><th>單位</th><th>帳面</th><th>實點</th><th>備註</th></tr></thead>
+    <tbody>${items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(it.品名)}</td><td>${esc(it.單位)}</td>
+      <td class="num">${esc(it.數量)}</td><td class="blank">${map[it.ID]?esc(map[it.ID].實點數量):''}</td><td></td></tr>`).join('')}</tbody></table>
+    <div class="sign"><span>盤點人：＿＿＿＿＿＿</span><span>覆核：＿＿＿＿＿＿</span><span>日期：＿＿＿＿＿＿</span></div>`;
+  window.print();
+}
+function exportStocktake(){
+  if(!xlsxReady() || !st.view) return;
+  const rows = st.viewDetails.map(d=>({ 品項ID:d.品項ID, 品名:d.品名, 帳面數量:d.帳面數量, 實點數量:d.實點數量, 差異:d.差異, 備註:d.備註, 輸入者:d.輸入者, 輸入時間:d.輸入時間, 調整記錄ID:d.調整記錄ID }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{說明:'沒有明細'}]), '盤點明細');
+  XLSX.writeFile(wb, `盤點_${st.view.盤點ID}_${todayStr()}.xlsx`);
+  showToast('已匯出盤點明細','success');
+}
+
 /* ============ 登入 / 密碼 ============ */
 function showLogin(msg){
   document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
   document.getElementById('logPanel').classList.remove('show');
+  document.getElementById('stPanel').classList.remove('show');
+  document.body.classList.remove('st-open');
   document.getElementById('loginPass').value = '';
   document.getElementById('loginPassField').style.display = needPass ? '' : 'none';
   if(userName) document.getElementById('loginName').value = userName;

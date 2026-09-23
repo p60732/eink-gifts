@@ -13,16 +13,23 @@
  * 密碼開關：「登入需要密碼」取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入。
  *
  * 異動記錄為帳本：不可刪除，登打錯誤請用「沖銷」產生反向記錄。
+ *
+ * 盤點：同一時間只能有一張進行中的盤點單。差異 = 實點 − 輸入當下的帳面數量，
+ *   所以盤點期間照常領用/補貨也不會算錯。完成盤點時先全部檢查、再一次寫入「盤點調整」。
  */
 
 const SHEET_ITEMS  = '庫存';
 const SHEET_LOGS   = '異動記錄';
 const SHEET_CONFIG = '設定';
 const SHEET_ADMINS = '管理者';
+const SHEET_ST     = '盤點';
+const SHEET_STD    = '盤點明細';
 const ITEM_HEADERS  = ['ID','品名','數量','單位','低庫存警示','備註','最後更新','圖片'];
 const LOG_HEADERS   = ['時間','品項ID','品名','變動量','變動後數量','備註','操作者','類型','記錄ID','沖銷對象'];
 const CONFIG_HEADERS = ['設定項目','值','說明'];
 const ADMIN_HEADERS = ['名稱','啟用','初始碼','密碼雜湊','鹽','最後登入','說明'];
+const ST_HEADERS  = ['盤點ID','狀態','開始時間','開始者','完成時間','完成者','備註','品項數','已盤','有差異','調整合計'];
+const STD_HEADERS = ['盤點ID','品項ID','品名','帳面數量','實點數量','差異','備註','輸入者','輸入時間','調整記錄ID'];
 
 const LIMITS = {
   name: 50, unit: 10, note: 300, img: 300, adminName: 20,
@@ -342,6 +349,39 @@ function log_(type, id, name, delta, after, note, operator, reverseOf){
 
 function readLogs_(){ return rowsToObjects_(logsSheet_().getDataRange().getValues()); }
 
+/* ============ 盤點 ============ */
+function sheetWithHeaders_(name, headers){
+  const ss = ss_();
+  let sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.getRange(1, 1, 1, headers.length).setValues([headers]); }
+  return sh;
+}
+function stSheet_(){  return sheetWithHeaders_(SHEET_ST, ST_HEADERS); }
+function stdSheet_(){ return sheetWithHeaders_(SHEET_STD, STD_HEADERS); }
+function readSt_(){ return rowsToObjects_(stSheet_().getDataRange().getValues()); }
+function stId_(v){
+  const s = String(v || '');
+  if (!/^S\d{4,}$/.test(s)) throw userError_('盤點單編號格式錯誤');
+  return s;
+}
+function findStRow_(id){
+  const vals = stSheet_().getDataRange().getValues();
+  for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id) return { row: i + 1, r: vals[i] };
+  return null;
+}
+function openSt_(){
+  return readSt_().find(x => x['狀態'] === '進行中') || null;
+}
+function stDetails_(id){
+  return rowsToObjects_(stdSheet_().getDataRange().getValues()).filter(d => String(d['盤點ID']) === id);
+}
+function requireOpenSt_(id){
+  const f = findStRow_(stId_(id));
+  if (!f) throw userError_('找不到盤點單');
+  if (f.r[1] !== '進行中') throw userError_('這張盤點單已經' + f.r[1]);
+  return f;
+}
+
 /* ============ 動作 ============ */
 function applyDelta_(id, delta){
   const row = findRow_(id);
@@ -431,6 +471,86 @@ const ACTIONS = {
     const r = applyDelta_(id, delta);
     log_(delta < 0 ? '領用' : '補貨', id, r.name, delta, r.newQty, note, s.name);
     return { success: true, newQty: r.newQty };
+  },
+
+  /** 盤點：目前進行中的盤點單（含明細）與最近的歷史 */
+  getStocktakes: () => {
+    const all = readSt_();
+    const open = all.find(x => x['狀態'] === '進行中') || null;
+    return { open, details: open ? stDetails_(open['盤點ID']) : [], history: all.filter(x => x['狀態'] !== '進行中').reverse().slice(0, 50) };
+  },
+
+  getStocktakeDetail: (s, b) => {
+    const id = stId_(b.stId);
+    const f = findStRow_(id);
+    if (!f) throw userError_('找不到盤點單');
+    return { stocktake: rowsToObjects_([ST_HEADERS, f.r])[0], details: stDetails_(id) };
+  },
+
+  startStocktake: (s, b) => {
+    if (openSt_()) throw userError_('已有進行中的盤點單，請先完成或取消');
+    const sh = stSheet_();
+    const id = 'S' + String(sh.getLastRow()).padStart(4, '0');
+    sh.appendRow([ id, '進行中', new Date().toISOString(), s.name, '', '', text_(b.note, LIMITS.note, '備註'), readItems_().length, 0, 0, 0 ]);
+    return { success: true, stId: id };
+  },
+
+  /** 輸入/修改某品項的實點數量；帳面以輸入當下的庫存為準 */
+  saveCount: (s, b) => {
+    const f = requireOpenSt_(b.stId);
+    const id = f.r[0];
+    const itemId = id_(b.itemId);
+    const counted = int_(b.counted, 0, LIMITS.qtyMax, '實點數量');
+    const row = findRow_(itemId);
+    if (row < 0) throw userError_('找不到品項');
+    const ish = itemsSheet_();
+    const book = Number(ish.getRange(row, 3).getValue()) || 0;
+    const name = ish.getRange(row, 2).getValue();
+    const rec = [ id, itemId, name, book, counted, counted - book, text_(b.note, LIMITS.note, '備註'), s.name, new Date().toISOString(), '' ];
+    const sh = stdSheet_();
+    const vals = sh.getDataRange().getValues();
+    let at = -1;
+    for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === itemId) { at = i + 1; break; }
+    if (at > 0) sh.getRange(at, 1, 1, STD_HEADERS.length).setValues([rec]);
+    else sh.appendRow(rec);
+    const det = stDetails_(id);
+    stSheet_().getRange(f.row, 9, 1, 2).setValues([[ det.length, det.filter(d => Number(d['差異']) !== 0).length ]]);
+    return { success: true, book, counted, diff: counted - book };
+  },
+
+  /** 完成盤點：先檢查全部，全部可行才一次寫入盤點調整 */
+  finalizeStocktake: (s, b) => {
+    const f = requireOpenSt_(b.stId);
+    const id = f.r[0];
+    const det = stDetails_(id);
+    if (!det.length) throw userError_('還沒有輸入任何實點數量');
+    const items = readItems_();
+    const plan = det.filter(d => Number(d['差異']) !== 0).map(d => {
+      const it = items.find(i => String(i.ID) === String(d['品項ID']));
+      if (!it) throw userError_('品項 ' + d['品名'] + ' 已不存在，請重新輸入或取消盤點');
+      const after = Number(it['數量']) + Number(d['差異']);
+      if (after < 0) throw userError_('「' + d['品名'] + '」盤點後會變成負數，請重新確認實點數量');
+      return d;
+    });
+    const sh = stdSheet_();
+    const vals = sh.getDataRange().getValues();
+    let total = 0;
+    plan.forEach(d => {
+      const diff = Number(d['差異']);
+      const r = applyDelta_(String(d['品項ID']), diff);
+      const logId = log_('盤點調整', String(d['品項ID']), r.name, diff, r.newQty,
+        '盤點 ' + id + '：帳面 ' + d['帳面數量'] + ' → 實點 ' + d['實點數量'] + (d['備註'] ? '（' + d['備註'] + '）' : ''), s.name);
+      for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === String(d['品項ID'])) { sh.getRange(i + 1, 10).setValue(logId); break; }
+      total += diff;
+    });
+    stSheet_().getRange(f.row, 2, 1, 10).setValues([[ '已完成', f.r[2], f.r[3], new Date().toISOString(), s.name, f.r[6], items.length, det.length, plan.length, total ]]);
+    return { success: true, adjusted: plan.length, counted: det.length, total };
+  },
+
+  cancelStocktake: (s, b) => {
+    const f = requireOpenSt_(b.stId);
+    stSheet_().getRange(f.row, 2, 1, 5).setValues([[ '已取消', f.r[2], f.r[3], new Date().toISOString(), s.name ]]);
+    return { success: true };
   },
 
   /** 沖銷：對一筆領用/補貨產生反向記錄，並把庫存調回 */
