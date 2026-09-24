@@ -60,24 +60,6 @@ const BACKUP_KEEP = 26;          // 每週一份，保留約半年
 const BACKUP_TAG = '_備份_';
 
 /* ============ 僅限擁有者在編輯器執行 ============ */
-function initSheets(){
-  assertOwner_();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const hasData = [SHEET_ITEMS, SHEET_LOGS].some(n => { const sh = ss.getSheetByName(n); return sh && sh.getLastRow() > 1; });
-  if (hasData) throw new Error('工作表已有資料，已停止初始化，避免覆蓋');
-
-  let items = ss.getSheetByName(SHEET_ITEMS) || ss.insertSheet(SHEET_ITEMS);
-  items.clear();
-  items.getRange(1,1,1,ITEM_HEADERS.length).setValues([ITEM_HEADERS]);
-
-  let logs = ss.getSheetByName(SHEET_LOGS) || ss.insertSheet(SHEET_LOGS);
-  logs.clear();
-  logs.getRange(1,1,1,LOG_HEADERS.length).setValues([LOG_HEADERS]);
-
-  configSheet_();
-  adminsSheet_();
-}
-
 /** 為「啟用、尚未設密碼、沒有初始碼」的管理者產生一次性初始碼 */
 function generateInitCodes(){
   assertOwner_();
