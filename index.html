@@ -515,22 +515,38 @@ async function postOnce(payload, ms){
     return await r.json();
   } finally { clearTimeout(timer); }
 }
+/* ---- 防重複送出：每次打開表單產生一個送出編號（rid），同樣內容重按或自動重送都用同一個 ---- */
+function newRid(){
+  try{ if(crypto.randomUUID) return crypto.randomUUID().replace(/-/g,''); }catch(e){}
+  return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+function shortHash(str){ let h = 5381; for(let i=0;i<str.length;i++) h = ((h<<5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
+const formRid = {};
+/** 同一個表單、同樣內容 → 同一個 rid；內容改了就視為新的送出 */
+function ridFor(kind, content){ return (formRid[kind] || (formRid[kind] = newRid())) + '-' + shortHash(JSON.stringify(content)); }
 const GET_BOUNCE_MSG = '請使用贈品庫存網頁';   // 與 Code.gs doGet 的訊息相同
 function isGetBounce(res){ return !!res && res.error === GET_BOUNCE_MSG && !res.code; }
 async function apiPost(body){
   let res;
   const payload = JSON.stringify({...body, token});
   const isRead = READ_ACTIONS.includes(body.action);
+  const safeRetry = isRead || !!body.rid;   // 帶 rid 的寫入重送不會重複登記
   try{
-    // 讀取：10 秒沒回應就自動重試一次；寫入不重試，避免重複登記
-    try{ res = await postOnce(payload, isRead ? 10000 : 45000); }
-    catch(e){ if(!isRead) throw e; res = await postOnce(payload, 20000); }
+    // 讀取 10 秒、帶 rid 的寫入 30 秒沒回應就自動重送一次；其他寫入不重送，避免重複登記
+    try{ res = await postOnce(payload, isRead ? 10000 : (body.rid ? 30000 : 45000)); }
+    catch(e){
+      if(!safeRetry) throw e;
+      if(!isRead) showToast('連線較慢，系統自動重送中（不會重複登記）…','success');
+      res = await postOnce(payload, isRead ? 20000 : 30000);
+    }
     // Google 偶爾把 POST 轉成 GET（回的是 doGet 的訊息）：伺服器什麼都沒做，重送一次一定安全
     if(isGetBounce(res)) res = await postOnce(payload, isRead ? 20000 : 45000);
     if(isGetBounce(res)) res = { error:'連線不穩，請稍後再試' };
   }catch(e){
     console.warn(e);
-    return { error: isRead ? '連線失敗，請檢查網路後重試' : '連線逾時，請重新整理確認是否已完成，再決定是否重做' };
+    return { error: isRead ? '連線失敗，請檢查網路後重試'
+      : body.rid ? '連線逾時。可以直接再按一次（同樣內容不會重複登記），或重新整理後查看異動記錄'
+      : '連線逾時，請重新整理確認是否已完成，再決定是否重做' };
   }
   if(res && res.code==='AUTH'){
     if(res.password===false) needPass = false; else if(res.password===true) needPass = true;
@@ -678,9 +694,11 @@ function setPreviewImg(el, v){
 }
 
 /* ============ 調整數量 ============ */
-async function quickAdjust(id, delta, note){
-  const res = await apiPost({action:'adjustQty', id, delta, note});
+async function quickAdjust(id, delta, note, kind){
+  const rid = ridFor(kind, {id, delta, note});
+  const res = await apiPost({action:'adjustQty', id, delta, note, rid});
   if(res.error){ showToast(res.error,'error'); return null; }
+  formRid[kind] = newRid();   // 成功後換新編號，下一筆是新的送出
   if(!updateLocalItem(id, res.newQty)) await loadItems();   // 只更新這一項，不重新讀整份
   return res.newQty;
 }
@@ -691,6 +709,7 @@ function openDispenseModal(){
   document.getElementById('dispensePreview').style.display='none';
   document.getElementById('dispenseQty').value = 1;
   document.getElementById('dispenseNote').value = '';
+  formRid.dispense = newRid();
   showOverlay('dispenseOverlay');
 }
 function onDispenseSelect(){
@@ -714,7 +733,7 @@ async function doDispense(){
   if(!confirm(`確定拿出「${it.品名}」${qty}${it.單位}？\n拿出後剩 ${it.數量 - qty}${it.單位}`)) return;
   const btn = document.querySelector('#dispenseOverlay .save');
   btn.disabled = true; btn.textContent = '處理中…';
-  const newQty = await quickAdjust(id, -qty, note);
+  const newQty = await quickAdjust(id, -qty, note, 'dispense');
   btn.disabled = false; btn.textContent = '確認拿出';
   if(newQty!==null){ showToast(`已拿出 ${qty}${it.單位}，剩 ${newQty}`,'success'); closeOverlay('dispenseOverlay'); }
 }
@@ -725,6 +744,7 @@ function openRestockModal(){
   document.getElementById('restockPreview').style.display='none';
   document.getElementById('restockQty').value = 1;
   document.getElementById('restockNote').value = '';
+  formRid.restock = newRid();
   showOverlay('restockOverlay');
 }
 function onRestockSelect(){
@@ -745,7 +765,7 @@ async function doRestock(){
   const note = document.getElementById('restockNote').value;
   const btn = document.querySelector('#restockOverlay .save');
   btn.disabled = true; btn.textContent = '處理中…';
-  const newQty = await quickAdjust(id, qty, note);
+  const newQty = await quickAdjust(id, qty, note, 'restock');
   btn.disabled = false; btn.textContent = '確認補入';
   if(newQty!==null){ showToast(`已補入 ${qty}${it.單位}，共 ${newQty}`,'success'); closeOverlay('restockOverlay'); }
 }
@@ -767,6 +787,7 @@ function openItemModal(item){
   document.getElementById('fImgUrl').value = pendingImg;
   document.getElementById('fImgFile').value = '';
   updateImgPreview();
+  formRid.item = newRid();
   showOverlay('itemOverlay');
 }
 function onImgUrlInput(){
@@ -812,6 +833,10 @@ function updateImgPreview(){
 async function saveItem(){
   const name = document.getElementById('fName').value.trim();
   if(!name){ showToast('請輸入品名','error'); return; }
+  // 同名提醒（比對時忽略空白與全半形括號差異）
+  const norm = v => String(v||'').replace(/\s+/g,'').replace(/（/g,'(').replace(/）/g,')').toLowerCase();
+  const same = items.find(i=> i.ID!==editingId && norm(i.品名)===norm(name));
+  if(same && !confirm(`已經有同名的品項「${same.品名}」（${same.ID}，庫存 ${same.數量}）。\n確定還要${editingId?'改成這個名稱':'再新增一筆'}？`)) return;
   const btn = document.querySelector('#itemOverlay .save');
   btn.disabled = true; btn.textContent = '儲存中…';
   try{
@@ -834,9 +859,9 @@ async function saveItem(){
     };
     const res = editingId
       ? await apiPost({action:'updateItem', id:editingId, ...payload})
-      : await apiPost({action:'addItem', ...payload});
+      : await apiPost({action:'addItem', ...payload, rid: ridFor('item', payload)});
     if(res.error){ showToast(res.error,'error'); return; }
-    showToast(editingId?'已更新':'已新增','success');
+    showToast(editingId?'已更新':(res.duplicate?'這筆剛才已經新增過了，沒有重複新增':'已新增'),'success');
     closeOverlay('itemOverlay');
     await loadItems();
   }finally{
@@ -845,8 +870,11 @@ async function saveItem(){
 }
 async function confirmDelete(id, name){
   const it = items.find(i=>i.ID===id);
-  if(it && Number(it.數量)!==0){ showToast(`「${name}」還有 ${it.數量}，請先歸零再刪除`,'error'); return; }
-  if(!confirm(`確定刪除「${name}」？`)) return;
+  const qty = it ? Number(it.數量) : 0;
+  const msg = qty
+    ? `「${name}」還有 ${qty}${it.單位||''}。\n\n如果是剛新增、還沒有任何拿出或補入（例如不小心重複新增），可以連同數量直接刪除。\n已經有其他異動的品項，系統會請你先歸零。\n\n確定刪除？`
+    : `確定刪除「${name}」？`;
+  if(!confirm(msg)) return;
   const res = await apiPost({action:'deleteItem', id});
   if(res.error){ showToast(res.error,'error'); return; }
   showToast('已刪除','success');
@@ -1023,6 +1051,7 @@ async function importItems(e){
     if(valid.length > IMPORT_MAX_ROWS){ showToast(`一次最多匯入 ${IMPORT_MAX_ROWS} 筆`,'error'); return; }
     if(!confirm(`將匯入 ${valid.length} 筆品項：\n・有對應 ID 的會更新品名、單位、警示、備註、圖片（數量不會變，數量請用拿出／補入／盤點調整）\n・沒有 ID 的會新增，並以「數量」欄當期初數量\n\n確定？`)) return;
     showToast(`匯入中…（0/${valid.length}）`,'success');
+    const importRid = newRid();
     let ok=0, fail=0;
     for(let i=0;i<valid.length;i++){
       const r = valid[i];
@@ -1038,7 +1067,7 @@ async function importItems(e){
       const exists = idStr && items.some(it=>it.ID===idStr);
       const res = exists
         ? await apiPost({action:'updateItem', id:idStr, ...payload})
-        : await apiPost({action:'addItem', ...payload});
+        : await apiPost({action:'addItem', ...payload, rid: importRid + '-' + i});
       if(res && res.error){ fail++; } else { ok++; }
     }
     await loadItems();
