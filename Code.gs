@@ -699,14 +699,21 @@ const ACTIONS = {
     if (row < 0) throw userError_('找不到品項');
     const sh = itemsSheet_();
     const qty = Number(sh.getRange(row, 3).getValue()) || 0;
-    if (qty !== 0) throw userError_('庫存還有 ' + qty + '，請先歸零再刪除');
+    let note = '';
+    if (qty !== 0) {
+      // 建立錯誤（例如重複新增）：新增後完全沒有其他異動、數量仍等於期初數量，才允許連同數量一起刪除
+      const mine = readLogs_().filter(l => String(l['品項ID']) === id);
+      const onlyCreated = mine.length === 1 && mine[0]['類型'] === '新增品項' && Number(mine[0]['變動量']) === qty;
+      if (!onlyCreated) throw userError_('庫存還有 ' + qty + '，這個品項已有其他異動，請先用拿出或盤點歸零再刪除');
+      note = '建立錯誤，連同期初數量 ' + qty + ' 一起刪除';
+    }
     const open = openSt_();
     if (open && stDetails_(String(open['盤點ID'])).some(d => String(d['品項ID']) === id)) {
       throw userError_('這個品項在進行中的盤點單裡已有實點數量，請先清除該項或完成盤點再刪除');
     }
     const name = sh.getRange(row, 2).getValue();
     sh.deleteRow(row);
-    log_('刪除品項', id, name, 0, 0, '', s.name);
+    log_('刪除品項', id, name, -qty, 0, note, s.name);
     return { success: true };
   },
 
@@ -883,7 +890,16 @@ function doPost(e){
       s = { name: text_(getConfig_('免登入操作者'), LIMITS.adminName, '操作者') || '未登入', mustChange: false, token: '', open: true };
     }
     if (s.mustChange && action !== 'changePasscode' && action !== 'logout') throw userError_('請先設定新密碼', 'MUST_CHANGE');
-    return json_(ACTIONS[action](s, body));
+    // 防重複送出：同一次送出（同一個 rid）若已成功，直接回上次結果，不再執行
+    // 檢查在取得鎖之後，所以兩個同時到達的重複請求也只會執行一次
+    const rid = writeAction && /^[A-Za-z0-9_-]{12,64}$/.test(String(body.rid || '')) ? 'rid_' + s.name + '_' + body.rid : '';
+    if (rid) {
+      const prev = CacheService.getScriptCache().get(rid);
+      if (prev) { const o = JSON.parse(prev); o.duplicate = true; return json_(o); }
+    }
+    const result = ACTIONS[action](s, body);
+    if (rid) { try { CacheService.getScriptCache().put(rid, JSON.stringify(result), 1800); } catch (x) {} }
+    return json_(result);
   } catch (err) {
     if (err && err.userFacing) {
       const out = { error: err.message, code: err.code || '' };
