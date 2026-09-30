@@ -279,6 +279,7 @@ body.st-open .toast{bottom:96px}
   </section>
 
   <section class="view" id="view-logs">
+    <div class="stfilter" id="logTypes"></div>
     <div class="lfilter">
       <select id="logFilterItem" onchange="loadLogs(false)"></select>
       <div class="lfilter-row">
@@ -605,7 +606,7 @@ async function loadItems(){
   const res = await apiPost({action:'getAll'});
   setSyncing(false);
   if(res.error){
-    lsSet(ITEMS_CACHE, null);
+    lsSet(ITEMS_CACHE, null); lsSet(LOGS_CACHE, null);
     // 不回退假資料：顯示錯誤，避免照著過期數字發放
     items = [];
     renderStats();
@@ -888,8 +889,16 @@ let logTotal = 0;
 let logOffset = 0;   // 已向後端讀到的位置（與畫面上去重後的筆數分開計）
 let logSeq = 0;
 const LOG_PAGE = 20;
+const LOG_TYPES = ['領用','補貨','新增品項','刪除品項','沖銷','盤點調整'];   // 與 Code.gs 相同
+let logType = '';
+function renderLogTypes(){
+  const box = document.getElementById('logTypes');
+  box.innerHTML = ['', ...LOG_TYPES].map(t=>`<button data-t="${esc(t)}" class="${t===logType?'on':''}">${t?esc(t):'全部'}</button>`).join('');
+  box.querySelectorAll('button').forEach(b=> b.onclick = ()=>{ logType = b.dataset.t; renderLogTypes(); loadLogs(false); });
+}
 function logQuery(){
   const q = {};
+  if(logType) q.type = logType;
   const itemId = document.getElementById('logFilterItem').value;
   const from = document.getElementById('logFilterFrom').value;
   const to = document.getElementById('logFilterTo').value;
@@ -906,13 +915,31 @@ function fillLogItemSelect(){
   sel.value = items.some(i=>i.ID===prev) ? prev : '';
 }
 /** reset=true：回到預設（全部品項、不限日期、最新 20 筆）；false：保留篩選重新讀第一頁 */
+const LOGS_CACHE = 'eink_logs_cache';
+function isDefaultLogQuery(){ return !Object.keys(logQuery()).length; }
 async function loadLogs(reset = true){
-  if(reset) ['logFilterFrom','logFilterTo'].forEach(id=>{ document.getElementById(id).value = ''; });
-  if(!items.length) await loadItems();
+  if(reset){
+    ['logFilterFrom','logFilterTo'].forEach(id=>{ document.getElementById(id).value = ''; });
+    logType = '';
+  }
+  renderLogTypes();
   fillLogItemSelect();
   if(reset) document.getElementById('logFilterItem').value = '';
-  document.getElementById('logList').innerHTML = '<div class="empty">載入中…</div>';
+  // 品項清單只用來顯示圖片與下拉選單，不必等它：和記錄同時載入，到了再補畫
+  if(!items.length) loadItems().then(()=>{ fillLogItemSelect(); if(allLogs.length) renderLogs(); });
   const seq = ++logSeq;
+  const list = document.getElementById('logList');
+  // 預設畫面先顯示上次的記錄（標示同步中），再向後端取最新的
+  let shownCache = false;
+  if(isDefaultLogQuery()){
+    try{
+      const c = JSON.parse(lsGet(LOGS_CACHE) || 'null');
+      if(c && Array.isArray(c.logs) && (c.open || (token && c.user === userName))){
+        allLogs = c.logs; logTotal = c.total; logOffset = allLogs.length; renderLogs(true); shownCache = true;
+      }
+    }catch(e){}
+  }
+  if(!shownCache) list.innerHTML = '<div class="empty">載入中…</div>';
   const res = await apiPost({action:'getLogs', limit:LOG_PAGE, offset:0, ...logQuery()});
   if(seq !== logSeq) return;   // 使用者已換篩選，丟掉舊結果
   if(res.error){
@@ -923,6 +950,7 @@ async function loadLogs(reset = true){
     return;
   }
   allLogs = res.logs || []; logTotal = res.total || allLogs.length; logOffset = allLogs.length;
+  if(isDefaultLogQuery()) lsSet(LOGS_CACHE, JSON.stringify({ user: userName, open: openMode, logs: allLogs, total: logTotal }));
   renderLogs();
 }
 async function loadMoreLogs(btn){
@@ -937,10 +965,10 @@ async function loadMoreLogs(btn){
   allLogs = allLogs.concat((res.logs || []).filter(l=>!seen.has(l.記錄ID))); logTotal = res.total || logTotal;
   renderLogs();
 }
-function renderLogs(){
+function renderLogs(syncing){
   const logs = allLogs;
   const list = document.getElementById('logList');
-  if(!logs.length){ list.innerHTML = '<div class="empty">沒有符合的記錄</div>'; return; }
+  if(!logs.length){ list.innerHTML = `<div class="empty">沒有符合的記錄${logType?'（類型：'+esc(logType)+'）':''}</div>`; return; }
   list.innerHTML = logs.map((l, idx)=>{
     const it = items.find(i=>i.ID===String(l.品項ID));
     const src = it ? imgSrc(it.圖片) : '';
@@ -959,11 +987,12 @@ function renderLogs(){
       ${canRev?`<button class="lrev" data-idx="${idx}">沖銷</button>`:''}
     </div>`;
   }).join('');
-  list.insertAdjacentHTML('beforeend', `<div class="logmore">顯示 ${logs.length} / ${logTotal} 筆${
-    logOffset < logTotal ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
+  list.insertAdjacentHTML('beforeend', `<div class="logmore">${syncing ? '同步中… · ' : ''}顯示 ${logs.length} / ${logTotal} 筆${
+    !syncing && logOffset < logTotal ? ` <button class="btn" id="logMoreBtn">顯示更多</button>` : ''}</div>`);
   const more = document.getElementById('logMoreBtn');
   if(more) more.onclick = ()=>loadMoreLogs(more);
   list.querySelectorAll('img').forEach(img=>{ img.onerror = ()=>{ img.style.visibility='hidden'; }; });
+  if(syncing) list.querySelectorAll('.lrev').forEach(btn=>{ btn.disabled = true; });   // 同步完成前不允許沖銷舊畫面
   list.querySelectorAll('.lrev').forEach(btn=>{
     btn.onclick = ()=>reverseEntry(logs[+btn.dataset.idx], btn);
   });
@@ -981,6 +1010,7 @@ async function reverseEntry(l, btn){
   await loadLogs(false);
 }
 function clearLogFilter(){
+  logType = '';
   document.getElementById('logFilterItem').value = '';
   document.getElementById('logFilterFrom').value = '';
   document.getElementById('logFilterTo').value = '';
@@ -1440,7 +1470,7 @@ async function doLogout(){
   closeOverlay('accountOverlay');
   await apiPost({action:'logout'});
   setSession('','');
-  lsSet(ITEMS_CACHE, null);
+  lsSet(ITEMS_CACHE, null); lsSet(LOGS_CACHE, null);
   items = []; renderStats();
   document.getElementById('grid').innerHTML = '';
   showLogin();
