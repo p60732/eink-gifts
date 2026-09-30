@@ -483,38 +483,71 @@ function log_(type, id, name, delta, after, note, operator, reverseOf){
   return logId;
 }
 
-function readLogs_(){ return rowsToObjects_(logsSheet_().getDataRange().getValues()); }
+/** 用記錄ID找那一列：Lxxxxx 的數字＋1 就是列號（新增時依列號編號）；對不上才掃「記錄ID」一欄 */
+function findLogRow_(logId){
+  const sh = logsSheet_();
+  const last = sh.getLastRow();
+  const W = LOG_HEADERS.length;
+  let row = parseInt(logId.slice(1), 10) + 1;
+  let r = row >= 2 && row <= last ? sh.getRange(row, 1, 1, W).getValues()[0] : null;
+  if (!r || String(r[8]) !== logId) {
+    if (last < 2) return null;
+    const i = sh.getRange(2, 9, last - 1, 1).getValues().findIndex(x => String(x[0]) === logId);
+    if (i < 0) return null;
+    row = i + 2; r = sh.getRange(row, 1, 1, W).getValues()[0];
+  }
+  return { row, log: rowsToObjects_([LOG_HEADERS, r])[0] };
+}
 
-/** 分頁讀取：limit 預設 20（上限 5000）、offset、itemId、fromTs/toTs（ISO 時間） */
+const LOG_TYPES = ['領用','補貨','新增品項','刪除品項','沖銷','盤點調整'];
+
+/** 分頁讀取（新到舊）：limit 預設 20（上限 5000）、offset、itemId、type、fromTs/toTs（ISO 時間）
+ *  只讀需要的欄與列：
+ *  - 沒有篩選：只讀要顯示的那幾列
+ *  - 有篩選：先只讀篩選用的欄（時間／品項／類型各 1 欄）找出符合的列，再只讀這一頁的列
+ *  - 「已沖銷」：沖銷一定在原記錄之後，所以只讀這一頁最舊那列到最新的「記錄ID／沖銷對象」兩欄 */
 function readLogsPage_(b){
   const limit = b.limit == null ? 20 : int_(b.limit, 1, 5000, '筆數');
   const offset = b.offset == null ? 0 : int_(b.offset, 0, 10000000, '起始位置');
   const itemId = b.itemId ? id_(b.itemId) : '';
+  const type = b.type ? String(b.type) : '';
+  if (type && LOG_TYPES.indexOf(type) < 0) throw userError_('記錄類型錯誤');
   const fromTs = b.fromTs ? tsMs_(b.fromTs) : null, toTs = b.toTs ? tsMs_(b.toTs) : null;
   const sh = logsSheet_();
   const n = sh.getLastRow() - 1;
   if (n < 1) return { logs: [], total: 0 };
   const W = LOG_HEADERS.length;
-  let rows, total;
-  if (!itemId && fromTs == null && toTs == null) {
+  const col = c => sh.getRange(2, c, n, 1).getValues();
+  let rows, total, firstRow;
+  if (!itemId && !type && fromTs == null && toTs == null) {
     total = n;
     const end = n - offset;                       // 由新到舊：最後一列最新
     if (end < 1) return { logs: [], total };
     const cnt = Math.min(limit, end);
-    rows = sh.getRange(2 + end - cnt, 1, cnt, W).getValues().reverse();
+    firstRow = 2 + end - cnt;
+    rows = sh.getRange(firstRow, 1, cnt, W).getValues().reverse();
   } else {
-    let all = sh.getRange(2, 1, n, W).getValues().filter(r => r[0] !== '');
-    if (itemId) all = all.filter(r => String(r[1]) === itemId);
-    if (fromTs != null || toTs != null) all = all.filter(r => {
-      const t = r[0] instanceof Date ? r[0].getTime() : Date.parse(r[0]);
-      return (fromTs == null || t >= fromTs) && (toTs == null || t <= toTs);
-    });
-    total = all.length;
-    rows = all.reverse().slice(offset, offset + limit);
+    let ok = null;                                // 0 起算的列索引是否符合
+    const keep = test => { ok = (ok || new Array(n).fill(true)).map((v, i) => v && test(i)); };
+    if (fromTs != null || toTs != null) {
+      const ts = col(1);
+      keep(i => { const v = ts[i][0]; const t = v instanceof Date ? v.getTime() : Date.parse(v);
+        return v !== '' && (fromTs == null || t >= fromTs) && (toTs == null || t <= toTs); });
+    }
+    if (itemId) { const ids = col(2); keep(i => String(ids[i][0]) === itemId); }
+    if (type) { const ty = col(8); keep(i => String(ty[i][0]) === type); }
+    const idx = [];
+    for (let i = n - 1; i >= 0; i--) if (ok[i]) idx.push(i);
+    total = idx.length;
+    const page = idx.slice(offset, offset + limit);
+    if (!page.length) return { logs: [], total };
+    const lo = page[page.length - 1], hi = page[0];
+    const span = sh.getRange(lo + 2, 1, hi - lo + 1, W).getValues();
+    rows = page.map(i => span[i - lo]);
+    firstRow = lo + 2;
   }
-  // 只讀「記錄ID／沖銷對象」兩欄來標示已沖銷
   const revBy = {};
-  sh.getRange(2, 9, n, 2).getValues().forEach(p => { if (p[1]) revBy[p[1]] = p[0]; });
+  sh.getRange(firstRow, 9, n + 2 - firstRow, 2).getValues().forEach(p => { if (p[1]) revBy[p[1]] = p[0]; });
   const logs = rowsToObjects_([LOG_HEADERS].concat(rows.filter(r => r[0] !== '')));
   logs.forEach(l => { l['已沖銷'] = revBy[l['記錄ID']] || ''; });
   return { logs, total };
@@ -550,6 +583,11 @@ function openSt_(){
 }
 function stDetails_(id){
   return rowsToObjects_(stdSheet_().getDataRange().getValues()).filter(d => String(d['盤點ID']) === id);
+}
+/** 用已讀進來的明細（含表頭）更新盤點單的「已盤／有差異」，不再重讀一次 */
+function updateStProgress_(stRow, id, vals){
+  const det = vals.slice(1).filter(r => String(r[0]) === id);
+  stSheet_().getRange(stRow, 9, 1, 2).setValues([[ det.length, det.filter(r => Number(r[5]) !== 0).length ]]);
 }
 function requireOpenSt_(id){
   const f = findStRow_(stId_(id));
@@ -647,7 +685,7 @@ const ACTIONS = {
   /** 異動記錄（新到舊）。沒有篩選時只讀需要的那幾列 */
   getLogs: (s, b) => {
     // 最常用的「最新 20 筆」有快取；網頁上任何寫入後立即清除
-    const isFirst = !b.itemId && !b.fromTs && !b.toTs && !b.offset && (b.limit == null || Number(b.limit) === 20);
+    const isFirst = !b.itemId && !b.type && !b.fromTs && !b.toTs && !b.offset && (b.limit == null || Number(b.limit) === 20);
     if (!isFirst) return readLogsPage_(b);
     return cached_('logs0', () => readLogsPage_(b));
   },
@@ -702,8 +740,11 @@ const ACTIONS = {
     let note = '';
     if (qty !== 0) {
       // 建立錯誤（例如重複新增）：新增後完全沒有其他異動、數量仍等於期初數量，才允許連同數量一起刪除
-      const mine = readLogs_().filter(l => String(l['品項ID']) === id);
-      const onlyCreated = mine.length === 1 && mine[0]['類型'] === '新增品項' && Number(mine[0]['變動量']) === qty;
+      const lsh = logsSheet_();
+      const ln = lsh.getLastRow() - 1;
+      // 只讀「品項ID」到「類型」這幾欄（B～H），不讀備註等其他欄
+      const mine = ln < 1 ? [] : lsh.getRange(2, 2, ln, 7).getValues().filter(r => String(r[0]) === id);
+      const onlyCreated = mine.length === 1 && mine[0][6] === '新增品項' && Number(mine[0][2]) === qty;
       if (!onlyCreated) throw userError_('庫存還有 ' + qty + '，這個品項已有其他異動，請先用拿出或盤點歸零再刪除');
       note = '建立錯誤，連同期初數量 ' + qty + ' 一起刪除';
     }
@@ -745,7 +786,8 @@ const ACTIONS = {
     if (openSt_()) throw userError_('已有進行中的盤點單，請先完成或取消');
     const sh = stSheet_();
     const id = 'S' + String(sh.getLastRow()).padStart(4, '0');
-    sh.appendRow([ id, '進行中', new Date().toISOString(), s.name, '', '', text_(b.note, LIMITS.note, '備註'), readItems_().length, 0, 0, 0 ]);
+    const itemCount = Math.max(itemsSheet_().getLastRow() - 1, 0);   // 只要筆數，不讀整份庫存
+    sh.appendRow([ id, '進行中', new Date().toISOString(), s.name, '', '', text_(b.note, LIMITS.note, '備註'), itemCount, 0, 0, 0 ]);
     return { success: true, stId: id };
   },
 
@@ -757,19 +799,17 @@ const ACTIONS = {
     const counted = int_(b.counted, 0, LIMITS.qtyMax, '實點數量');
     const row = findRow_(itemId);
     if (row < 0) throw userError_('找不到品項');
-    const ish = itemsSheet_();
-    const book = Number(ish.getRange(row, 3).getValue()) || 0;
-    const name = ish.getRange(row, 2).getValue();
+    const nb = itemsSheet_().getRange(row, 2, 1, 2).getValues()[0];   // 品名、數量一次讀
+    const name = nb[0], book = Number(nb[1]) || 0;
     const rec = [ id, itemId, name, book, counted, counted - book, text_(b.note, LIMITS.note, '備註'), s.name, new Date().toISOString(), '' ];
     const sh = stdSheet_();
     const vals = sh.getDataRange().getValues();
     let at = -1;
     for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === itemId) { at = i + 1; break; }
     if (at > 0 && vals[at - 1][9]) throw userError_('這項已經寫入盤點調整，不能再修改');
-    if (at > 0) sh.getRange(at, 1, 1, STD_HEADERS.length).setValues([rec]);
-    else sh.appendRow(rec);
-    const det = stDetails_(id);
-    stSheet_().getRange(f.row, 9, 1, 2).setValues([[ det.length, det.filter(d => Number(d['差異']) !== 0).length ]]);
+    if (at > 0) { sh.getRange(at, 1, 1, STD_HEADERS.length).setValues([rec]); vals[at - 1] = rec; }
+    else { sh.appendRow(rec); vals.push(rec); }
+    updateStProgress_(f.row, id, vals);
     return { success: true, book, counted, diff: counted - book };
   },
 
@@ -783,9 +823,8 @@ const ACTIONS = {
     const hit = [];
     for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === id && String(vals[i][1]) === itemId) hit.push(i);
     if (hit.some(i => vals[i][9])) throw userError_('這項已經寫入盤點調整，不能清除');
-    hit.reverse().forEach(i => sh.deleteRow(i + 1));   // 由下往上刪，列號才不會跑掉
-    const det = stDetails_(id);
-    stSheet_().getRange(f.row, 9, 1, 2).setValues([[ det.length, det.filter(d => Number(d['差異']) !== 0).length ]]);
+    hit.reverse().forEach(i => { sh.deleteRow(i + 1); vals.splice(i, 1); });   // 由下往上刪，列號才不會跑掉
+    updateStProgress_(f.row, id, vals);
     return { success: true };
   },
 
@@ -831,11 +870,13 @@ const ACTIONS = {
     const logId = String(b.logId || '');
     if (!/^L\d{5,}$/.test(logId)) throw userError_('記錄編號格式錯誤');
     const reason = text_(b.reason, LIMITS.note, '沖銷原因', true);
-    const logs = readLogs_();
-    const orig = logs.find(l => l['記錄ID'] === logId);
-    if (!orig) throw userError_('找不到記錄');
+    const f = findLogRow_(logId);
+    if (!f) throw userError_('找不到記錄');
+    const orig = f.log;
     if (REVERSIBLE.indexOf(orig['類型']) < 0) throw userError_('這類記錄不能沖銷');
-    if (logs.some(l => l['沖銷對象'] === logId)) throw userError_('這筆已經沖銷過了');
+    // 沖銷一定在原記錄之後：只讀原記錄那列以後的「沖銷對象」一欄
+    const lsh = logsSheet_();
+    if (lsh.getRange(f.row, 10, lsh.getLastRow() - f.row + 1, 1).getValues().some(x => String(x[0]) === logId)) throw userError_('這筆已經沖銷過了');
     const delta = -Number(orig['變動量']);
     const r = applyDelta_(String(orig['品項ID']), delta);
     const newId = log_('沖銷', String(orig['品項ID']), r.name, delta, r.newQty, '沖銷 ' + logId + '：' + reason, s.name, logId);
