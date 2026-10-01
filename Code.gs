@@ -135,7 +135,7 @@ function mailBackupExcel(e){
     name: 'E Ink 贈品庫存',
     body: '附件是 ' + day + ' 的贈品庫存備份 Excel（庫存 ' + nItems + ' 項、異動記錄 ' + nLogs + ' 筆，另含盤點記錄）。\n'
       + '請存到自己的電腦或公司硬碟保存。\n\n'
-      + '這封信每年 1/1、7/1 自動寄出。收件人可在試算表「設定」分頁的「備份寄送信箱」修改。',
+      + '這封信每年 1/1、7/1 自動寄出。收件人可在贈品庫存網頁「設定 → 備份與安全」修改。',
     attachments: [blob]
   });
   setConfig_('最後寄送備份', now.toISOString());
