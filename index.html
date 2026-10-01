@@ -508,7 +508,7 @@ function setCanManage(v){
   if(!canManage && document.body.classList.contains('st-open')) switchTab('items');
 }
 document.body.classList.toggle('can-manage', canManage);
-let lastBackup = '';
+let lastBackup = '', lastMail = '';
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   if((name || '') !== userName || !t) setCanManage(false);   // 換人或登出：權限等 getAll 回來再定
@@ -637,7 +637,7 @@ async function loadItems(){
   openMode = !!res.openMode;
   needPass = res.passwordMode !== false;
   setCanManage(res.canManage);
-  lastBackup = res.lastBackup || '';
+  lastBackup = res.lastBackup || ''; lastMail = res.lastMail || '';
   if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards(); saveItemsCache();
   return true;
@@ -1556,6 +1556,8 @@ function openAccount(){
   const stale = !lastBackup || isNaN(bt) || (Date.now() - bt) > 8 * 86400000;
   bk.textContent = !lastBackup || isNaN(bt) ? '⚠ 尚未設定每週自動備份'
     : `最後自動備份：${bt.getFullYear()}/${bt.getMonth()+1}/${bt.getDate()}${stale ? '（已超過一週，請檢查備份）' : ''}`;
+  const mt = new Date(lastMail);
+  if(lastMail && !isNaN(mt)) bk.textContent += `；最後寄出備份 Excel：${mt.getFullYear()}/${mt.getMonth()+1}/${mt.getDate()}`;
   bk.style.color = stale ? 'var(--danger, #c0392b)' : '';
   show('accBackup', !openMode && canManage);
   document.querySelector('#accountOverlay .mbtns .save').style.display = openMode ? 'none' : '';

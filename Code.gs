@@ -54,8 +54,12 @@ const CONFIG_DEFAULTS = [
   ['免登入操作者', 'Kim', '不需登入時，異動記錄上的操作者名稱'],
   ['登入需要密碼', false, '勾選 = 名稱＋密碼；取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入'],
   ['備份資料夾ID', '', '每週自動備份存放的雲端硬碟資料夾；留空會自動建立'],
-  ['最後備份', '', '最近一次自動備份的時間（系統自動填寫）']
+  ['最後備份', '', '最近一次自動備份的時間（系統自動填寫）'],
+  ['備份寄送信箱', '', '每半年（1/1、7/1）自動寄出備份 Excel 的收件信箱，多個用逗號分隔；空白 = 寄給試算表擁有者'],
+  ['最後寄送備份', '', '最近一次寄出備份 Excel 的時間（系統自動填寫）']
 ];
+const MAIL_MONTHS = [0, 6];      // 1 月、7 月寄出備份 Excel
+const MAIL_MAX_TO = 10;
 const BACKUP_KEEP = 26;          // 每週一份，保留約半年
 const BACKUP_TAG = '_備份_';
 
@@ -102,6 +106,73 @@ function setupWeeklyBackup(){
   ScriptApp.newTrigger('backupSpreadsheet').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).everyWeeks(1).create();
   backupSpreadsheet();
   console.log('已設定每週一早上 7 點自動備份');
+}
+
+/** 每半年把備份 Excel（庫存、異動記錄、盤點）寄給「備份寄送信箱」。
+ *  觸發條件每月 1 日早上 8 點呼叫，只在 1 月、7 月寄出；在編輯器手動執行則立即寄出 */
+function mailBackupExcel(e){
+  assertOwner_();
+  const now = new Date();
+  if (e && e.triggerUid && MAIL_MONTHS.indexOf(now.getMonth()) < 0) return;
+  const to = backupRecipients_();
+  const tz = Session.getScriptTimeZone() || 'Asia/Taipei';
+  const day = Utilities.formatDate(now, tz, 'yyyy/MM/dd');
+  const blob = backupXlsx_(Utilities.formatDate(now, tz, 'yyyyMMdd'));
+  const nItems = Math.max(itemsSheet_().getLastRow() - 1, 0);
+  const nLogs = Math.max(logsSheet_().getLastRow() - 1, 0);
+  MailApp.sendEmail({
+    to: to.join(','),
+    subject: 'E Ink 贈品庫存 定期備份 ' + day,
+    name: 'E Ink 贈品庫存',
+    body: '附件是 ' + day + ' 的贈品庫存備份 Excel（庫存 ' + nItems + ' 項、異動記錄 ' + nLogs + ' 筆，另含盤點記錄）。\n'
+      + '請存到自己的電腦或公司硬碟保存。\n\n'
+      + '這封信每年 1/1、7/1 自動寄出。收件人可在試算表「設定」分頁的「備份寄送信箱」修改。',
+    attachments: [blob]
+  });
+  setConfig_('最後寄送備份', now.toISOString());
+  console.log('已寄出備份 Excel 給 ' + to.join(', '));
+}
+
+/** 只需執行一次：建立每半年寄出備份 Excel 的觸發條件，並立刻寄一封確認 */
+function setupHalfYearMail(){
+  assertOwner_();
+  ensureConfigDefaults_();   // 「設定」分頁補上「備份寄送信箱」一列
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'mailBackupExcel')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('mailBackupExcel').timeBased().onMonthDay(1).atHour(8).create();
+  mailBackupExcel();
+  console.log('已設定每年 1/1、7/1 早上 8 點自動寄出備份 Excel');
+}
+
+function backupRecipients_(){
+  const list = getConfig_('備份寄送信箱').split(/[,，;；\s]+/).map(x => x.trim()).filter(Boolean);
+  const bad = list.filter(x => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+  if (bad.length) throw new Error('「備份寄送信箱」格式錯誤：' + bad.join(', '));
+  if (list.length > MAIL_MAX_TO) throw new Error('「備份寄送信箱」最多 ' + MAIL_MAX_TO + ' 個');
+  return list.length ? list : [ Session.getEffectiveUser().getEmail() ];
+}
+
+/** 只複製庫存、異動記錄、盤點到暫存試算表再轉成 Excel（不含人員名單與密碼欄），用完丟垃圾桶 */
+function backupXlsx_(stamp){
+  const src = ss_();
+  const tmp = SpreadsheetApp.create('eink贈品備份_暫存_' + stamp);
+  try {
+    const blank = tmp.getSheets()[0];
+    [SHEET_ITEMS, SHEET_LOGS, SHEET_ST, SHEET_STD].forEach(n => {
+      const sh = src.getSheetByName(n);
+      if (sh) sh.copyTo(tmp).setName(n);
+    });
+    tmp.deleteSheet(blank);
+    SpreadsheetApp.flush();
+    const res = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + tmp.getId() + '/export?format=xlsx', {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+    });
+    if (res.getResponseCode() !== 200) throw new Error('轉成 Excel 失敗（' + res.getResponseCode() + '）');
+    return res.getBlob().setName('贈品庫存_備份_' + stamp + '.xlsx');
+  } finally {
+    DriveApp.getFileById(tmp.getId()).setTrashed(true);
+  }
 }
 
 function backupFolder_(){
@@ -627,7 +698,7 @@ const ACTIONS = {
   getAll: (s) => {
     const manage = canManage_(s);
     const out = { items: readItemsCached_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: manage };
-    if (manage) out.lastBackup = getConfig_('最後備份');
+    if (manage) { out.lastBackup = getConfig_('最後備份'); out.lastMail = getConfig_('最後寄送備份'); }
     return out;
   },
 
@@ -919,7 +990,7 @@ const READ_ONLY = ['getAll','getLogs','getStocktakes','getStocktakeDetail','list
 const MANAGE_ONLY = ['uploadImage','addItem','updateItem','deleteItem',
   'getStocktakes','getStocktakeDetail','startStocktake','saveCount','clearCount','finalizeStocktake','cancelStocktake',
   'listAdmins','saveAdmin','resetAdminPasscode'];
-const SCHEMA_KEY = 'schema_ok_v3';
+const SCHEMA_KEY = 'schema_ok_v4';   // 改版號 = 讓新的設定列（備份寄送信箱）補上
 
 /** 格式檢查（補欄位、補設定列）只在快取過期時做一次 */
 function ensureSchemaOnce_(lock){
