@@ -585,8 +585,17 @@ function findStRow_(id){
 function openSt_(){
   return readSt_().find(x => x['狀態'] === '進行中') || null;
 }
+/** 某張盤點單的明細：先只讀「盤點ID」一欄找出範圍，再只讀那幾列 */
 function stDetails_(id){
-  return rowsToObjects_(stdSheet_().getDataRange().getValues()).filter(d => String(d['盤點ID']) === id);
+  const sh = stdSheet_();
+  const n = sh.getLastRow() - 1;
+  if (n < 1) return [];
+  const ids = sh.getRange(2, 1, n, 1).getValues();
+  let lo = -1, hi = -1;
+  for (let i = 0; i < n; i++) if (String(ids[i][0]) === id) { if (lo < 0) lo = i; hi = i; }
+  if (lo < 0) return [];
+  const rows = sh.getRange(2 + lo, 1, hi - lo + 1, STD_HEADERS.length).getValues().filter(r => String(r[0]) === id);
+  return rowsToObjects_([STD_HEADERS].concat(rows));
 }
 /** 用已讀進來的明細（含表頭）更新盤點單的「已盤／有差異」，不再重讀一次 */
 function updateStProgress_(stRow, id, vals){
@@ -780,11 +789,11 @@ const ACTIONS = {
   },
 
   /** 盤點：目前進行中的盤點單（含明細）與最近的歷史 */
-  getStocktakes: () => {
+  getStocktakes: () => cached_('st', () => {   // 有快取；網頁上任何寫入後立即作廢
     const all = readSt_();
     const open = all.find(x => x['狀態'] === '進行中') || null;   // 同 openSt_，但重用已讀的資料
     return { open, details: open ? stDetails_(open['盤點ID']) : [], history: all.filter(x => x['狀態'] !== '進行中').reverse().slice(0, 50) };
-  },
+  }),
 
   getStocktakeDetail: (s, b) => {
     const id = stId_(b.stId);
@@ -798,8 +807,10 @@ const ACTIONS = {
     const sh = stSheet_();
     const id = 'S' + String(sh.getLastRow()).padStart(4, '0');
     const itemCount = Math.max(itemsSheet_().getLastRow() - 1, 0);   // 只要筆數，不讀整份庫存
-    sh.appendRow([ id, '進行中', new Date().toISOString(), s.name, '', '', text_(b.note, LIMITS.note, '備註'), itemCount, 0, 0, 0 ]);
-    return { success: true, stId: id };
+    const row = [ id, '進行中', new Date().toISOString(), s.name, '', '', text_(b.note, LIMITS.note, '備註'), itemCount, 0, 0, 0 ];
+    sh.appendRow(row);
+    // 直接回傳新的盤點單，網頁不必再讀一次
+    return { success: true, stId: id, open: rowsToObjects_([ST_HEADERS, row])[0] };
   },
 
   /** 輸入/修改某品項的實點數量；帳面以輸入當下的庫存為準 */
