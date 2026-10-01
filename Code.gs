@@ -53,14 +53,16 @@ const CONFIG_DEFAULTS = [
   ['需要登入', false, '勾選 = 需要管理者登入；取消勾選 = 任何知道網址的人都能操作'],
   ['免登入操作者', 'Kim', '不需登入時，異動記錄上的操作者名稱'],
   ['登入需要密碼', false, '勾選 = 名稱＋密碼；取消勾選 = 只要輸入「管理者」名單內、已啟用的名稱即可登入'],
-  ['備份資料夾ID', '', '每週自動備份存放的雲端硬碟資料夾；留空會自動建立'],
+  ['備份資料夾ID', '', '每季自動備份存放的雲端硬碟資料夾；留空會自動建立'],
   ['最後備份', '', '最近一次自動備份的時間（系統自動填寫）'],
   ['備份寄送信箱', '', '每半年（1/1、7/1）自動寄出備份 Excel 的收件信箱，多個用逗號分隔；空白 = 寄給試算表擁有者'],
   ['最後寄送備份', '', '最近一次寄出備份 Excel 的時間（系統自動填寫）']
 ];
 const MAIL_MONTHS = [0, 6];      // 1 月、7 月寄出備份 Excel
 const MAIL_MAX_TO = 10;
-const BACKUP_KEEP = 26;          // 每週一份，保留約半年
+const BACKUP_KEEP = 8;           // 每季一份，保留約兩年
+const BACKUP_MONTHS = [0, 3, 6, 9];   // 1、4、7、10 月
+const BACKUP_MIN_GAP_DAYS = 45;   // 同一季只備份一次（舊的每週觸發條件也不會重複備份）
 const BACKUP_TAG = '_備份_';
 
 /* ============ 僅限擁有者在編輯器執行 ============ */
@@ -81,9 +83,16 @@ function generateInitCodes(){
   console.log('已產生 ' + made + ' 組初始碼，請到「管理者」分頁查看，私下交給對方');
 }
 
-/** 備份整份試算表到「eink贈品備份」資料夾；超過 BACKUP_KEEP 份的舊備份移到垃圾桶。由每週觸發條件呼叫，也可手動執行 */
-function backupSpreadsheet(){
+/** 備份整份試算表到「eink贈品備份」資料夾；超過 BACKUP_KEEP 份的舊備份移到垃圾桶。
+ *  觸發條件呼叫時只在 1、4、7、10 月、且距上次備份超過 45 天才備份；在編輯器手動執行則立即備份 */
+function backupSpreadsheet(e){
   assertOwner_();
+  if (e && e.triggerUid) {
+    const now = new Date();
+    const last = Date.parse(getConfig_('最後備份'));
+    if (BACKUP_MONTHS.indexOf(now.getMonth()) < 0) return;
+    if (!isNaN(last) && now.getTime() - last < BACKUP_MIN_GAP_DAYS * 86400000) return;
+  }
   const file = DriveApp.getFileById(ss_().getId());
   const folder = backupFolder_();
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Taipei', 'yyyy-MM-dd_HHmm');
@@ -97,15 +106,15 @@ function backupSpreadsheet(){
   console.log('已備份，目前保留 ' + Math.min(list.length, BACKUP_KEEP) + ' 份');
 }
 
-/** 只需執行一次：建立每週一早上 7 點的自動備份，並立刻先備份一份 */
-function setupWeeklyBackup(){
+/** 只需執行一次：建立每季（1/1、4/1、7/1、10/1 早上 7 點）的自動備份，並立刻先備份一份 */
+function setupQuarterlyBackup(){
   assertOwner_();
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === 'backupSpreadsheet')
     .forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('backupSpreadsheet').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).everyWeeks(1).create();
+  ScriptApp.newTrigger('backupSpreadsheet').timeBased().onMonthDay(1).atHour(7).create();
   backupSpreadsheet();
-  console.log('已設定每週一早上 7 點自動備份');
+  console.log('已設定每季自動備份（1/1、4/1、7/1、10/1）');
 }
 
 /** 每半年把備份 Excel（庫存、異動記錄、盤點）寄給「備份寄送信箱」。

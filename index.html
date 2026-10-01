@@ -253,7 +253,6 @@ body.st-open .toast{bottom:96px}
         <p class="sub">登記拿出與補入、定期盤點，一頁看清庫存數量與低庫存狀況。</p>
       </div>
       <div class="tools">
-        <button class="hbtn" onclick="exportItems()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
         <button class="hbtn mgr" id="exportAllBtn" onclick="exportAll()" title="庫存、全部異動記錄、盤點記錄一次下載成一個 Excel（備份用）"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M3 17v3h18v-3"/></svg>全部匯出</button>
         <button class="hbtn mgr" onclick="document.getElementById('importFile').click()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>匯入</button>
         <button class="hbtn" onclick="openAccount()"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>設定</button>
@@ -294,7 +293,6 @@ body.st-open .toast{bottom:96px}
         <input type="date" id="logFilterTo" onchange="loadLogs(false)">
         <button class="hbtn" onclick="clearLogFilter()">清除</button>
       </div>
-      <button class="hbtn" onclick="exportLogs()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
     </div>
     <div class="llist" id="logList"></div>
   </section>
@@ -1050,33 +1048,6 @@ async function xlsxReady(){
   if(await loadXlsx()) return true;
   showToast('Excel 元件載入失敗，請檢查網路後再試','error'); return false;
 }
-async function exportItems(){
-  if(!await xlsxReady()) return;
-  if(!items.length){ showToast('沒有資料可匯出','error'); return; }
-  const rows = items.map(i=>({
-    ID:i.ID, 品名:i.品名, 數量:i.數量, 單位:i.單位,
-    低庫存警示:i.低庫存警示, 備註:i.備註, 最後更新:i.最後更新, 圖片:i.圖片
-  }));
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '庫存');
-  XLSX.writeFile(wb, `贈品庫存_${todayStr()}.xlsx`);
-  showToast('已匯出庫存 Excel','success');
-}
-async function exportLogs(){
-  if(!await xlsxReady()) return;
-  showToast('匯出中…','success');
-  const res = await apiPost({action:'getLogs', limit:5000, offset:0, ...logQuery()});
-  if(res.error){ showToast(res.error,'error'); return; }
-  const logs = res.logs || [];
-  if(!logs.length){ showToast('沒有記錄可匯出','error'); return; }
-  const ws = XLSX.utils.json_to_sheet(logs);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '異動記錄');
-  XLSX.writeFile(wb, `異動記錄_${todayStr()}.xlsx`);
-  if(res.total > logs.length) showToast(`記錄共 ${res.total} 筆，這次只匯出最新 ${logs.length} 筆；請用日期篩選分段匯出`,'error');
-  else showToast('已匯出異動記錄 Excel','success');
-}
 /** 全部匯出（備份用）：最新庫存＋全部異動記錄＋盤點記錄，一個 Excel 多個分頁 */
 async function exportAll(){
   const btn = document.getElementById('exportAllBtn');
@@ -1553,9 +1524,9 @@ function openAccount(){
   // 備份狀態（只給可管理人員看）：超過 8 天沒備份就提醒
   const bk = document.getElementById('accBackup');
   const bt = new Date(lastBackup);
-  const stale = !lastBackup || isNaN(bt) || (Date.now() - bt) > 8 * 86400000;
-  bk.textContent = !lastBackup || isNaN(bt) ? '⚠ 尚未設定每週自動備份'
-    : `最後自動備份：${bt.getFullYear()}/${bt.getMonth()+1}/${bt.getDate()}${stale ? '（已超過一週，請檢查備份）' : ''}`;
+  const stale = !lastBackup || isNaN(bt) || (Date.now() - bt) > 100 * 86400000;   // 每季備份：超過約 3 個月沒備份就提醒
+  bk.textContent = !lastBackup || isNaN(bt) ? '⚠ 尚未設定每季自動備份'
+    : `最後自動備份：${bt.getFullYear()}/${bt.getMonth()+1}/${bt.getDate()}${stale ? '（已超過一季，請檢查備份）' : ''}`;
   const mt = new Date(lastMail);
   if(lastMail && !isNaN(mt)) bk.textContent += `；最後寄出備份 Excel：${mt.getFullYear()}/${mt.getMonth()+1}/${mt.getDate()}`;
   bk.style.color = stale ? 'var(--danger, #c0392b)' : '';
