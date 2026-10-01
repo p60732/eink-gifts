@@ -154,11 +154,16 @@ function setupHalfYearMail(){
   console.log('已設定每年 1/1、7/1 早上 8 點自動寄出備份 Excel');
 }
 
+/** 把「a@x.com, b@y.com」拆成信箱清單並檢查格式（逗號、分號、空白、全形都可分隔） */
+function parseEmails_(raw){
+  const list = String(raw || '').split(/[,，;；\s]+/).map(x => x.trim()).filter(Boolean);
+  const bad = list.filter(x => x.length > 100 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+  if (bad.length) throw userError_('信箱格式錯誤：' + bad.join(', '));
+  if (list.length > MAIL_MAX_TO) throw userError_('備份寄送信箱最多 ' + MAIL_MAX_TO + ' 個');
+  return list;
+}
 function backupRecipients_(){
-  const list = getConfig_('備份寄送信箱').split(/[,，;；\s]+/).map(x => x.trim()).filter(Boolean);
-  const bad = list.filter(x => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
-  if (bad.length) throw new Error('「備份寄送信箱」格式錯誤：' + bad.join(', '));
-  if (list.length > MAIL_MAX_TO) throw new Error('「備份寄送信箱」最多 ' + MAIL_MAX_TO + ' 個');
+  const list = parseEmails_(getConfig_('備份寄送信箱'));
   return list.length ? list : [ Session.getEffectiveUser().getEmail() ];
 }
 
@@ -453,7 +458,7 @@ function adminIndex_(){
     const idx = {};
     readAdmins_().forEach(x => {
       const n = String(x.r[0]).trim();
-      idx[n] = [x.r[1] === true, x.r[7] === true, Number(props['sg:' + n] || 0)];
+      idx[n] = [x.r[1] === true, x.r[7] === true, Number(props['sg:' + n] || 0), !!x.r[3]];   // 啟用、可管理、登入世代、已設密碼
     });
     return idx;
   });
@@ -522,12 +527,11 @@ function login_(body){
 }
 
 function changePasscode_(s, body){
-  if (!passwordRequired_()) throw userError_('目前登入不需要密碼');
   if (!canManage_(s)) throw userError_('一般人員登入不需要密碼');
   const a = findAdmin_(s.name);
   const next = String(body.newPasscode || '');
   if (next.length < LIMITS.passMin || next.length > LIMITS.passMax) throw userError_('新密碼需 ' + LIMITS.passMin + '～' + LIMITS.passMax + ' 字');
-  if (!s.mustChange) {
+  if (!s.mustChange && a.r[3]) {   // 已經有密碼才要驗證目前密碼；第一次設定（密碼模式打開前先設好）不用
     const cur = String(body.passcode || '');
     if (hash_(cur, String(a.r[4])) !== String(a.r[3])) throw userError_('目前密碼錯誤');
   }
@@ -707,7 +711,11 @@ const ACTIONS = {
   getAll: (s) => {
     const manage = canManage_(s);
     const out = { items: readItemsCached_(), user: s.name, openMode: !!s.open, passwordMode: passwordRequired_(), canManage: manage };
-    if (manage) { out.lastBackup = getConfig_('最後備份'); out.lastMail = getConfig_('最後寄送備份'); }
+    if (manage) {
+      out.lastBackup = getConfig_('最後備份'); out.lastMail = getConfig_('最後寄送備份');
+      out.backupEmails = getConfig_('備份寄送信箱');
+      out.hasPassword = !!(adminIndex_()[s.name] || [])[3];
+    }
     return out;
   },
 
@@ -768,10 +776,37 @@ const ACTIONS = {
     return out;
   },
 
-  /** 重設某人的密碼：清除舊密碼並產生新的一次性初始碼（僅密碼模式） */
+  /** 網頁「設定 → 備份與安全」：備份寄送信箱、管理人員登入是否需要密碼 */
+  saveSettings: (s, b) => {
+    const out = { success: true };
+    if (b.backupEmails !== undefined) setConfig_('備份寄送信箱', parseEmails_(b.backupEmails).join(', '));
+    if (b.managerPassword !== undefined) {
+      const on = b.managerPassword === true, was = passwordRequired_();
+      if (on && !was) {
+        const me = findAdmin_(s.name);
+        if (!me.r[3]) throw userError_('請先在「設定」設定你自己的密碼，再打開這個選項');
+        if (hash_(String(b.passcode || ''), String(me.r[4])) !== String(me.r[3])) throw userError_('目前密碼錯誤');
+        // 其他還沒有密碼、也沒有初始碼的管理人員：發一次性初始碼，避免被鎖在外面
+        const sh = adminsSheet_(), codes = [];
+        readAdmins_().forEach(x => {
+          if (x.r[1] === true && x.r[7] === true && !x.r[3] && !x.r[2]) {
+            const c = randomCode_(8); sh.getRange(x.row, 3).setValue(c);
+            codes.push({ name: String(x.r[0]).trim(), code: c });
+          }
+        });
+        setConfig_('登入需要密碼', true);
+        out.initCodes = codes;
+        out.token = newSession_(s.name, false, true); out.name = s.name;   // 自己剛驗證過密碼，不必重新登入
+      } else if (!on && was) {
+        setConfig_('登入需要密碼', false);
+      }
+    }
+    return out;
+  },
+
+  /** 重設某人的密碼：清除舊密碼並產生新的一次性初始碼（只限可管理人員；密碼模式關閉時先備好，打開後用初始碼登入） */
   resetAdminPasscode: (s, b) => {
     requireManage_(s);
-    if (!passwordRequired_()) throw userError_('目前登入不需要密碼');
     const name = personName_(b.name);
     const t = readAdmins_().find(x => String(x.r[0]).trim() === name);
     if (!t) throw userError_('找不到人員');
@@ -998,7 +1033,7 @@ const READ_ONLY = ['getAll','getLogs','getStocktakes','getStocktakeDetail','list
 /** 只有「可管理人員」能做的動作：編輯品項清單、盤點、人員管理。一般人員只能拿出、補入、沖銷自己的記錄 */
 const MANAGE_ONLY = ['uploadImage','addItem','updateItem','deleteItem',
   'getStocktakes','getStocktakeDetail','startStocktake','saveCount','clearCount','finalizeStocktake','cancelStocktake',
-  'listAdmins','saveAdmin','resetAdminPasscode'];
+  'listAdmins','saveAdmin','resetAdminPasscode','saveSettings'];
 const SCHEMA_KEY = 'schema_ok_v4';   // 改版號 = 讓新的設定列（備份寄送信箱）補上
 
 /** 格式檢查（補欄位、補設定列）只在快取過期時做一次 */
