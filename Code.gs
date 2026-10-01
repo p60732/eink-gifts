@@ -406,7 +406,7 @@ function auth_(token){
   const drop = msg => { CacheService.getScriptCache().remove('s_' + t); throw userError_(msg, 'AUTH'); };
   if (!a || a[0] !== true) drop('帳號已停用');
   if ((a[2] || 0) !== (s.g || 0)) drop('登入已失效，請重新登入');
-  const needPass = passwordRequired_();
+  const needPass = passwordRequired_() && a[1] === true;   // 只有可管理人員需要密碼
   if (needPass && !s.pw) drop('現在需要密碼，請重新登入');
   return { name: s.n, mustChange: s.mc && needPass, token: t };
 }
@@ -414,14 +414,17 @@ function auth_(token){
 function login_(body){
   const name = String(body.name || '').trim();
   const pass = String(body.passcode || '');
-  const needPass = passwordRequired_();
-  if (!name || name.length > LIMITS.adminName || (needPass && !pass) || pass.length > LIMITS.passMax) throw userError_(needPass ? '名稱或密碼錯誤' : '名稱不在管理者名單內');
+  const pwMode = passwordRequired_();
+  if (!name || name.length > LIMITS.adminName || pass.length > LIMITS.passMax) throw userError_(pwMode ? '名稱或密碼錯誤' : '名稱不在人員名單內');
   const cache = CacheService.getScriptCache();
   const failKey = 'f_' + Utilities.base64EncodeWebSafe(name);
   const fails = Number(cache.get(failKey) || 0);
   if (fails >= FAIL_MAX) throw userError_('錯誤次數過多，請 15 分鐘後再試');
 
   const a = findAdmin_(name);
+  // 密碼模式只套用在可管理人員；一般人員輸入工號（名稱）即可登入
+  const needPass = pwMode && !!a && a.r[7] === true;
+  if (needPass && !pass && a.r[1] === true) throw userError_('管理人員請輸入密碼', 'NEED_PASS');
   let ok = false, mustChange = false;
   if (a && a.r[1] === true && !needPass) ok = true;
   else if (a && a.r[1] === true) {
@@ -431,7 +434,7 @@ function login_(body){
   }
   if (!ok) {
     cache.put(failKey, String(fails + 1), FAIL_LOCK);
-    throw userError_(needPass ? '名稱或密碼錯誤' : '名稱不在管理者名單內');
+    throw userError_(pwMode ? '名稱或密碼錯誤' : '名稱不在人員名單內');
   }
   cache.remove(failKey);
   adminsSheet_().getRange(a.row, 6).setValue(new Date().toISOString());
@@ -440,6 +443,7 @@ function login_(body){
 
 function changePasscode_(s, body){
   if (!passwordRequired_()) throw userError_('目前登入不需要密碼');
+  if (!canManage_(s)) throw userError_('一般人員登入不需要密碼');
   const a = findAdmin_(s.name);
   const next = String(body.newPasscode || '');
   if (next.length < LIMITS.passMin || next.length > LIMITS.passMax) throw userError_('新密碼需 ' + LIMITS.passMin + '～' + LIMITS.passMax + ' 字');
@@ -641,7 +645,7 @@ const ACTIONS = {
     const sh = adminsSheet_();
     let code = '';
     if (!orig) {
-      const init = passwordRequired_() ? randomCode_(8) : '';
+      const init = passwordRequired_() && manage ? randomCode_(8) : '';   // 一般人員不需要密碼
       sh.appendRow([ name, enabled, init, '', '', '', note, manage ]);
       const last = sh.getLastRow();
       sh.getRange(last, 2).insertCheckboxes(); sh.getRange(last, 8).insertCheckboxes();
@@ -656,8 +660,14 @@ const ACTIONS = {
       if (!(enabled && manage) && managers === 0) throw userError_('至少要保留一位可管理人員');
       sh.getRange(t.row, 1, 1, 2).setValues([[ name, enabled ]]);
       sh.getRange(t.row, 7, 1, 2).setValues([[ note, manage ]]);
-      // 改名或停用：舊名稱的登入全部失效
-      if (name !== orig || !enabled) bumpSessionGen_(orig);
+      const wasManage = t.r[7] === true;
+      // 密碼模式下升為可管理人員、但還沒有密碼：發一組一次性初始碼
+      if (manage && !wasManage && passwordRequired_() && !t.r[3] && !t.r[2]) {
+        code = randomCode_(8);
+        sh.getRange(t.row, 3).setValue(code);
+      }
+      // 改名、停用或權限改變：舊名稱的登入全部失效（重新登入後才會套用新權限）
+      if (name !== orig || !enabled || manage !== wasManage) bumpSessionGen_(orig);
     }
     // 新名稱（新增或改名）若曾被別人用過，先讓那些舊登入失效，避免被新的人繼承
     if (!orig || name !== orig) bumpSessionGen_(name);
@@ -676,6 +686,7 @@ const ACTIONS = {
     const name = personName_(b.name);
     const t = readAdmins_().find(x => String(x.r[0]).trim() === name);
     if (!t) throw userError_('找不到人員');
+    if (t.r[7] !== true) throw userError_('一般人員登入不需要密碼');
     const code = randomCode_(8);
     adminsSheet_().getRange(t.row, 3, 1, 3).setValues([[ code, '', '' ]]);
     bumpSessionGen_(name);   // 對方目前的登入立即失效
@@ -874,6 +885,7 @@ const ACTIONS = {
     if (!f) throw userError_('找不到記錄');
     const orig = f.log;
     if (REVERSIBLE.indexOf(orig['類型']) < 0) throw userError_('這類記錄不能沖銷');
+    if (!canManage_(s) && String(orig['操作者']) !== s.name) throw userError_('只能沖銷自己登打的記錄，其他人的請找管理人員');
     // 沖銷一定在原記錄之後：只讀原記錄那列以後的「沖銷對象」一欄
     const lsh = logsSheet_();
     if (lsh.getRange(f.row, 10, lsh.getLastRow() - f.row + 1, 1).getValues().some(x => String(x[0]) === logId)) throw userError_('這筆已經沖銷過了');
@@ -892,6 +904,10 @@ function doGet(){
 /* ============ POST ============ */
 /** 只讀取、不寫入的動作：不必排隊等鎖 */
 const READ_ONLY = ['getAll','getLogs','getStocktakes','getStocktakeDetail','listAdmins'];
+/** 只有「可管理人員」能做的動作：編輯品項清單、盤點、人員管理。一般人員只能拿出、補入、沖銷自己的記錄 */
+const MANAGE_ONLY = ['uploadImage','addItem','updateItem','deleteItem',
+  'getStocktakes','getStocktakeDetail','startStocktake','saveCount','clearCount','finalizeStocktake','cancelStocktake',
+  'listAdmins','saveAdmin','resetAdminPasscode'];
 const SCHEMA_KEY = 'schema_ok_v3';
 
 /** 格式檢查（補欄位、補設定列）只在快取過期時做一次 */
@@ -931,6 +947,7 @@ function doPost(e){
       s = { name: text_(getConfig_('免登入操作者'), LIMITS.adminName, '操作者') || '未登入', mustChange: false, token: '', open: true };
     }
     if (s.mustChange && action !== 'changePasscode' && action !== 'logout') throw userError_('請先設定新密碼', 'MUST_CHANGE');
+    if (MANAGE_ONLY.indexOf(action) >= 0) requireManage_(s);
     // 防重複送出：同一次送出（同一個 rid）若已成功，直接回上次結果，不再執行
     // 檢查在取得鎖之後，所以兩個同時到達的重複請求也只會執行一次
     const rid = writeAction && /^[A-Za-z0-9_-]{12,64}$/.test(String(body.rid || '')) ? 'rid_' + s.name + '_' + body.rid : '';
