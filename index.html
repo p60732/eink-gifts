@@ -172,6 +172,7 @@ svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;str
 .strow .sdiff.minus{color:var(--danger)} .strow .sdiff.plus{color:var(--ok)} .strow .sdiff.zero{color:var(--mute)}
 .strow .sstate{font-size:12px;color:var(--ok);width:22px;text-align:center;flex:none}
 .stfoot{position:fixed;left:0;right:0;bottom:0;display:none;justify-content:center;gap:12px;padding:14px 22px;background:#fff;border-top:1px solid var(--line);z-index:60}
+body:not(.can-manage) .mgr{display:none!important}
 body.st-open .stfoot{display:flex}
 body.st-open .view.on{padding-bottom:100px}
 .stfoot button{flex:1;max-width:400px;padding:13px;border-radius:12px;font-weight:700;font-size:15px}
@@ -186,6 +187,10 @@ body.st-open .view.on{padding-bottom:100px}
 .stfilter{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .stfilter button{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#fff;border:1px solid var(--line);color:var(--mid)}
 .stfilter button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+/* 異動記錄的類型列固定在畫面上方，捲動時一直看得到；手機上不換行、可左右滑 */
+#logTypes{position:sticky;top:0;z-index:20;background:var(--bg);margin:0 -4px 12px;padding:10px 4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;box-shadow:0 6px 8px -8px rgba(15,23,42,.25)}
+#logTypes::-webkit-scrollbar{display:none}
+#logTypes button{flex:0 0 auto}
 .stintro{color:var(--mid);margin-bottom:18px;line-height:1.8}
 
 /* ---------- Toast / misc ---------- */
@@ -249,7 +254,7 @@ body.st-open .toast{bottom:96px}
       </div>
       <div class="tools">
         <button class="hbtn" onclick="exportItems()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
-        <button class="hbtn" onclick="document.getElementById('importFile').click()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>匯入</button>
+        <button class="hbtn mgr" onclick="document.getElementById('importFile').click()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>匯入</button>
         <button class="hbtn" onclick="openAccount()"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>設定</button>
         <span class="user" id="userLabel"></span>
         <span class="sync" id="syncTag" style="display:none">同步中…</span>
@@ -258,7 +263,7 @@ body.st-open .toast{bottom:96px}
     <div class="actions">
       <button class="btn" onclick="openDispenseModal()"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>拿出贈品</button>
       <button class="btn" onclick="openRestockModal()"><svg class="ic" viewBox="0 0 24 24"><path d="M17 7 7 17"/><path d="M16 17H7V8"/></svg>補入庫存</button>
-      <button class="btn primary" onclick="openItemModal(null)"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新增品項</button>
+      <button class="btn primary mgr" onclick="openItemModal(null)"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新增品項</button>
     </div>
     <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importItems(event)">
   </section>
@@ -268,7 +273,7 @@ body.st-open .toast{bottom:96px}
   <nav class="tabs" id="tabs">
     <button data-tab="items" class="on" onclick="switchTab('items')">庫存品項</button>
     <button data-tab="logs" onclick="switchTab('logs')">異動記錄</button>
-    <button data-tab="st" onclick="switchTab('st')">盤點</button>
+    <button data-tab="st" class="mgr" onclick="switchTab('st')">盤點</button>
   </nav>
 
   <section class="view on" id="view-items">
@@ -402,13 +407,13 @@ body.st-open .toast{bottom:96px}
 <!-- Login -->
 <div class="overlay" id="loginOverlay">
   <div class="modal loginbox">
-    <h3>管理者登入</h3>
+    <h3>登入</h3>
     <div class="field">
-      <label>名稱</label>
-      <input type="text" id="loginName" maxlength="20" autocomplete="username" onkeydown="if(event.key==='Enter' && !needPass)doLogin()">
+      <label>工號／名稱</label>
+      <input type="text" id="loginName" maxlength="20" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div class="field" id="loginPassField">
-      <label>密碼（第一次登入請輸入初始碼）</label>
+      <label>密碼（只有管理人員需要；第一次登入請輸入初始碼）</label>
       <input type="password" id="loginPass" maxlength="64" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div class="mbtns">
@@ -463,7 +468,7 @@ body.st-open .toast{bottom:96px}
   <div class="modal" style="max-width:620px">
     <h3>人員管理</h3>
     <div class="hint" style="font-size:13px;color:var(--mid);margin:-8px 0 14px;line-height:1.7">
-      名單內且「啟用」的人才能登入。「可管理」的人可以在這裡新增或調整人員。人員不能刪除，不再使用請取消「啟用」。</div>
+      名單內且「啟用」的人才能登入（名稱填工號即可）。<b>一般人員</b>只能拿出、補入贈品，並沖銷自己登打的記錄；<b>可管理</b>的人另外可以新增／編輯／刪除品項、匯入、盤點，以及管理人員。權限改變後，對方要重新登入才會套用。人員不能刪除，不再使用請取消「啟用」。</div>
     <div id="peopleList"></div>
     <div class="padd">
       <input type="text" id="newPersonName" maxlength="20" placeholder="新人員名稱">
@@ -495,10 +500,17 @@ function lsSet(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.se
 let token = lsGet('eink_token') || '';
 let openMode = false;   // 後端設定為免登入時為 true
 let needPass = true;    // 登入是否需要密碼（由後端告知：getAll 的 passwordMode 或 AUTH 回應）
-let canManage = false;
+let canManage = lsGet('eink_mgr') === '1';   // 可管理人員：編輯品項、盤點、人員管理（一般人員只能拿出／補入）
+function setCanManage(v){
+  canManage = !!v; lsSet('eink_mgr', canManage ? '1' : null);
+  document.body.classList.toggle('can-manage', canManage);
+  if(!canManage && document.body.classList.contains('st-open')) switchTab('items');
+}
+document.body.classList.toggle('can-manage', canManage);
 let lastBackup = '';
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
+  if((name || '') !== userName || !t) setCanManage(false);   // 換人或登出：權限等 getAll 回來再定
   token = t || ''; userName = name || '';
   lsSet('eink_token', token || null); lsSet('eink_user', userName || null);
   document.getElementById('userLabel').textContent = userName ? userName : '';
@@ -623,7 +635,7 @@ async function loadItems(){
   items = res.items || [];
   openMode = !!res.openMode;
   needPass = res.passwordMode !== false;
-  canManage = !!res.canManage;
+  setCanManage(res.canManage);
   lastBackup = res.lastBackup || '';
   if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards(); saveItemsCache();
@@ -675,13 +687,14 @@ function buildCard(it){
       <div class="meta">更新：${esc(fmtTime(it.最後更新))}</div>
     </div>
     <div class="actions">
-      <button class="edit">編輯</button>
-      <button class="del">刪除</button>
+      ${canManage?'<button class="edit">編輯</button><button class="del">刪除</button>':''}
     </div>`;
   const img = div.querySelector('img');
   if(img) img.onerror = ()=>{ img.style.display='none'; };
-  div.querySelector('.edit').onclick = ()=>openItemModal(it);
-  div.querySelector('.del').onclick = ()=>confirmDelete(it.ID, it.品名);
+  if(canManage){
+    div.querySelector('.edit').onclick = ()=>openItemModal(it);
+    div.querySelector('.del').onclick = ()=>confirmDelete(it.ID, it.品名);
+  }
   return div;
 }
 function fillItemSelect(sel){
@@ -975,7 +988,7 @@ function renderLogs(syncing){
     const img = src ? `<img src="${esc(src)}" alt="" loading="lazy">` : '<img alt="" style="visibility:hidden">';
     const d = Number(l.變動量)||0;
     const plus = d>=0;
-    const canRev = ['領用','補貨'].includes(l.類型) && !l.已沖銷;
+    const canRev = ['領用','補貨'].includes(l.類型) && !l.已沖銷 && (canManage || l.操作者 === userName);   // 一般人員只能沖銷自己的
     const revTag = l.已沖銷 ? ` · 已被 ${esc(l.已沖銷)} 沖銷` : '';
     return `<div class="logitem${l.已沖銷?' rev':''}">${img}
       <div class="linfo">
@@ -1343,14 +1356,14 @@ function renderPeople(){
   const box = document.getElementById('peopleList');
   box.innerHTML = people.list.map((p,i)=>{
     const me = p.name===people.me;
-    const status = !people.passwordMode ? '' : (p.pendingInit ? '等待首次登入（已有初始碼）' : (p.hasPassword ? '已設密碼' : '尚未設密碼'));
+    const status = !people.passwordMode ? '' : (!p.canManage ? '不需密碼' : (p.pendingInit ? '等待首次登入（已有初始碼）' : (p.hasPassword ? '已設密碼' : '尚未設密碼')));
     return `<div class="prow${p.enabled?'':' off'}" data-i="${i}">
       <div class="pname"><input type="text" maxlength="20" value="${esc(p.name)}">
         <div class="pmeta">${me?'<span class="me">目前登入</span> ':''}最後登入：${esc(fmtTime(p.lastLogin))||'—'}${status?' · '+esc(status):''}</div></div>
       <label class="chk"><input type="checkbox" class="pen" ${p.enabled?'checked':''} ${me?'disabled':''}> 啟用</label>
       <label class="chk"><input type="checkbox" class="pmg" ${p.canManage?'checked':''} ${me?'disabled':''}> 可管理</label>
       <div class="pbtns">
-        ${people.passwordMode?'<button class="preset">重設密碼</button>':''}
+        ${people.passwordMode && p.canManage?'<button class="preset">重設密碼</button>':''}
         <button class="save psave">儲存</button>
       </div></div>`;
   }).join('') || '<div class="empty" style="padding:20px">沒有人員</div>';
@@ -1373,8 +1386,9 @@ async function savePerson(p, row){
   const res = await apiPost({action:'saveAdmin', origName:p.name, name, enabled, canManage:manage, note:p.note});
   btn.disabled = false; btn.textContent = '儲存';
   if(res.error){ showToast(res.error,'error'); return; }
-  if(res.token){ setSession(res.token, res.name); }
+  if(res.token){ setSession(res.token, res.name); loadItems(); }
   showToast('已儲存','success');
+  if(res.initCode) showInitCode(name, res.initCode);
   await reloadPeople();
 }
 async function addPerson(){
@@ -1407,18 +1421,22 @@ function showLogin(msg){
   if(userName) document.getElementById('loginName').value = userName;
   showOverlay('loginOverlay');
   if(msg) showToast(msg,'error');
-  setTimeout(()=>document.getElementById(needPass && document.getElementById('loginName').value?'loginPass':'loginName').focus(), 50);
+  setTimeout(()=>document.getElementById('loginName').focus(), 50);
 }
 async function doLogin(){
   const name = document.getElementById('loginName').value.trim();
   const passcode = document.getElementById('loginPass').value;
-  if(!name || (needPass && !passcode)){ showToast(needPass ? '請輸入名稱與密碼' : '請輸入名稱','error'); return; }
+  if(!name){ showToast('請輸入工號或名稱','error'); return; }
   const btn = document.querySelector('#loginOverlay .save');
   btn.disabled = true; btn.textContent = '登入中…';
   const res = await apiPost({action:'login', name, passcode});
   btn.disabled = false; btn.textContent = '登入';
   document.getElementById('loginPass').value = '';
-  if(res.error){ showToast(res.error,'error'); return; }
+  if(res.error){
+    showToast(res.error,'error');
+    if(res.code==='NEED_PASS'){ document.getElementById('loginPassField').style.display=''; document.getElementById('loginPass').focus(); }
+    return;
+  }
   setSession(res.token, res.name);
   closeOverlay('loginOverlay');
   if(res.mustChange){ openChangePass(true); return; }
@@ -1453,7 +1471,7 @@ function openAccount(){
     ? `目前為免登入模式，操作者記為「${userName}」` : (userName ? `目前登入：${userName}` : '');
   const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
   show('accPeople', !openMode && canManage);
-  show('accPass', !openMode && needPass);
+  show('accPass', !openMode && needPass && canManage);   // 一般人員不需要密碼
   show('accApi', !openMode && canManage);   // 後端網址只給可管理人員
   // 備份狀態（只給可管理人員看）：超過 8 天沒備份就提醒
   const bk = document.getElementById('accBackup');
