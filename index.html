@@ -454,8 +454,32 @@ body.st-open .toast{bottom:96px}
     <div class="mbtns" style="flex-direction:column">
       <button class="cancel" id="accPeople" onclick="closeOverlay('accountOverlay');openPeople()">人員管理</button>
       <button class="cancel" id="accPass" onclick="closeOverlay('accountOverlay');openChangePass(false)">更改密碼</button>
+      <button class="cancel" id="accSys" onclick="closeOverlay('accountOverlay');openSys()">備份與安全</button>
       <button class="cancel" id="accApi" onclick="closeOverlay('accountOverlay');configApi()">後端網址</button>
       <button class="save" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+</div>
+
+<!-- 備份與安全（可管理人員） -->
+<div class="overlay" id="sysOverlay">
+  <div class="modal loginbox">
+    <h3>備份與安全</h3>
+    <div class="field">
+      <label>備份寄送信箱（每年 1/1、7/1 自動寄出備份 Excel）</label>
+      <input type="text" id="sysEmails" maxlength="1100" placeholder="空白＝寄給試算表擁有者；多個用逗號分隔">
+    </div>
+    <div class="field">
+      <label class="chk" style="font-weight:600"><input type="checkbox" id="sysPw" onchange="syncSysPw()"> 管理人員登入需要密碼</label>
+      <div class="hint" style="font-size:13px;color:var(--mid);line-height:1.7;margin-top:6px">一般人員不受影響，仍只輸入工號。打開前請先用「設定 → 設定密碼」設好你自己的密碼；其他還沒有密碼的管理人員，系統會各給一組一次性初始碼。</div>
+    </div>
+    <div class="field" id="sysPwConfirm" style="display:none">
+      <label>你的密碼（打開密碼要求時確認用）</label>
+      <input type="password" id="sysPass" maxlength="64" autocomplete="current-password">
+    </div>
+    <div class="mbtns">
+      <button class="cancel" onclick="closeOverlay('sysOverlay')">取消</button>
+      <button class="save" id="sysSave" onclick="saveSys()">儲存</button>
     </div>
   </div>
 </div>
@@ -506,7 +530,7 @@ function setCanManage(v){
   if(!canManage && document.body.classList.contains('st-open')) switchTab('items');
 }
 document.body.classList.toggle('can-manage', canManage);
-let lastBackup = '', lastMail = '';
+let lastBackup = '', lastMail = '', backupEmails = '', myHasPassword = false;
 let userName = lsGet('eink_user') || '';
 function setSession(t, name){
   if((name || '') !== userName || !t) setCanManage(false);   // 換人或登出：權限等 getAll 回來再定
@@ -636,6 +660,7 @@ async function loadItems(){
   needPass = res.passwordMode !== false;
   setCanManage(res.canManage);
   lastBackup = res.lastBackup || ''; lastMail = res.lastMail || '';
+  backupEmails = res.backupEmails || ''; myHasPassword = !!res.hasPassword;
   if(res.user) setSession(openMode ? '' : token, res.user);
   renderStats(); renderCards(); saveItemsCache();
   return true;
@@ -1404,14 +1429,14 @@ function renderPeople(){
   const box = document.getElementById('peopleList');
   box.innerHTML = people.list.map((p,i)=>{
     const me = p.name===people.me;
-    const status = !people.passwordMode ? '' : (!p.canManage ? '不需密碼' : (p.pendingInit ? '等待首次登入（已有初始碼）' : (p.hasPassword ? '已設密碼' : '尚未設密碼')));
+    const status = !p.canManage ? '' : (p.hasPassword ? '已設密碼' : (p.pendingInit ? '有初始碼（尚未設定密碼）' : '尚未設密碼'));
     return `<div class="prow${p.enabled?'':' off'}" data-i="${i}">
       <div class="pname"><input type="text" maxlength="20" value="${esc(p.name)}">
         <div class="pmeta">${me?'<span class="me">目前登入</span> ':''}最後登入：${esc(fmtTime(p.lastLogin))||'—'}${status?' · '+esc(status):''}</div></div>
       <label class="chk"><input type="checkbox" class="pen" ${p.enabled?'checked':''} ${me?'disabled':''}> 啟用</label>
       <label class="chk"><input type="checkbox" class="pmg" ${p.canManage?'checked':''} ${me?'disabled':''}> 可管理</label>
       <div class="pbtns">
-        ${people.passwordMode && p.canManage?'<button class="preset">重設密碼</button>':''}
+        ${p.canManage?'<button class="preset">重設密碼</button>':''}
         <button class="save psave">儲存</button>
       </div></div>`;
   }).join('') || '<div class="empty" style="padding:20px">沒有人員</div>';
@@ -1422,7 +1447,10 @@ function renderPeople(){
   });
 }
 function showInitCode(name, code){
-  alert(`「${name}」的一次性初始碼：\n\n${code}\n\n請私下交給對方。第一次登入時需用它設定自己的密碼，之後初始碼就失效。\n（這個代碼只會顯示這一次）`);
+  const how = needPass
+    ? '第一次登入時用它當密碼，系統會要求設定自己的密碼，之後初始碼就失效。'
+    : '目前管理人員登入還不需要密碼：對方可以登入後到「設定 → 設定密碼」直接設定；這組初始碼要等打開密碼要求後才會用到。';
+  alert(`「${name}」的一次性初始碼：\n\n${code}\n\n請私下交給對方。${how}\n（這個代碼只會顯示這一次）`);
 }
 async function savePerson(p, row){
   const name = row.querySelector('.pname input').value.trim();
@@ -1496,7 +1524,7 @@ function openChangePass(forced){
   passForced = forced;
   document.querySelectorAll('.overlay.show').forEach(o=>o.classList.remove('show'));
   document.getElementById('passHint').textContent = forced ? '第一次登入，請設定你自己的密碼（初始碼將失效）。' : '';
-  document.getElementById('curPassField').style.display = forced ? 'none' : 'block';
+  document.getElementById('curPassField').style.display = (forced || !myHasPassword) ? 'none' : 'block';
   document.getElementById('passCancel').style.display = forced ? 'none' : 'block';
   ['curPass','newPass','newPass2'].forEach(id=>document.getElementById(id).value='');
   showOverlay('passOverlay');
@@ -1510,6 +1538,7 @@ async function doChangePass(){
   ['curPass','newPass','newPass2'].forEach(id=>document.getElementById(id).value='');
   if(res.error){ if(res.code!=='AUTH') showToast(res.error,'error'); return; }
   setSession(res.token, res.name);
+  myHasPassword = true;
   closeOverlay('passOverlay');
   showToast('密碼已更新','success');
   if(passForced) loadItems();
@@ -1519,7 +1548,9 @@ function openAccount(){
     ? `目前為免登入模式，操作者記為「${userName}」` : (userName ? `目前登入：${userName}` : '');
   const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
   show('accPeople', !openMode && canManage);
-  show('accPass', !openMode && needPass && canManage);   // 一般人員不需要密碼
+  show('accPass', !openMode && canManage);   // 一般人員不需要密碼；管理人員可先設好，再打開密碼要求
+  document.getElementById('accPass').textContent = myHasPassword ? '更改密碼' : '設定密碼';
+  show('accSys', !openMode && canManage);
   show('accApi', !openMode && canManage);   // 後端網址只給可管理人員
   // 備份狀態（只給可管理人員看）：超過 8 天沒備份就提醒
   const bk = document.getElementById('accBackup');
@@ -1533,6 +1564,38 @@ function openAccount(){
   show('accBackup', !openMode && canManage);
   document.querySelector('#accountOverlay .mbtns .save').style.display = openMode ? 'none' : '';
   showOverlay('accountOverlay');
+}
+/* ============ 備份與安全 ============ */
+function openSys(){
+  document.getElementById('sysEmails').value = backupEmails;
+  document.getElementById('sysPw').checked = needPass;
+  document.getElementById('sysPass').value = '';
+  syncSysPw();
+  showOverlay('sysOverlay');
+}
+function syncSysPw(){   // 從「不需要」改成「需要」時才要輸入自己的密碼
+  document.getElementById('sysPwConfirm').style.display = (document.getElementById('sysPw').checked && !needPass) ? '' : 'none';
+}
+async function saveSys(){
+  const emails = document.getElementById('sysEmails').value.trim();
+  const on = document.getElementById('sysPw').checked;
+  const body = { action:'saveSettings', backupEmails: emails };
+  if(on !== needPass){
+    if(on && !myHasPassword){ showToast('請先在「設定 → 設定密碼」設好你自己的密碼','error'); return; }
+    if(on && !document.getElementById('sysPass').value){ showToast('請輸入你的密碼確認','error'); return; }
+    if(!on && !confirm('關閉後，管理人員只要輸入工號就能登入，確定？')) return;
+    body.managerPassword = on; body.passcode = document.getElementById('sysPass').value;
+  }
+  const btn = document.getElementById('sysSave'); btn.disabled = true; btn.textContent = '儲存中…';
+  const res = await apiPost(body);
+  btn.disabled = false; btn.textContent = '儲存';
+  document.getElementById('sysPass').value = '';
+  if(res.error){ if(res.code!=='AUTH') showToast(res.error,'error'); return; }
+  if(res.token) setSession(res.token, res.name);
+  closeOverlay('sysOverlay');
+  showToast('已儲存','success');
+  await loadItems();   // 先更新密碼模式等狀態，初始碼說明才會正確
+  (res.initCodes || []).forEach(x => showInitCode(x.name, x.code));
 }
 async function doLogout(){
   closeOverlay('accountOverlay');
