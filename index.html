@@ -618,7 +618,7 @@ async function loadItems(){
   const res = await apiPost({action:'getAll'});
   setSyncing(false);
   if(res.error){
-    lsSet(ITEMS_CACHE, null); lsSet(LOGS_CACHE, null);
+    lsSet(ITEMS_CACHE, null); lsSet(LOGS_CACHE, null); lsSet('eink_st_cache', null);
     // 不回退假資料：顯示錯誤，避免照著過期數字發放
     items = [];
     renderStats();
@@ -1137,16 +1137,24 @@ function configApi(){
 const ST_INTERVAL_DAYS = 182;   // 盤點頻率：約半年一次
 let st = { open:null, details:[], history:[], view:null, viewDetails:[], filter:'all' };
 function stDetailMap(list){ const m={}; (list||[]).forEach(d=>m[String(d.品項ID)]=d); return m; }
+const ST_CACHE = 'eink_st_cache';
+function applyStData(res){ st.open = res.open||null; st.details = res.details||[]; st.history = res.history||[]; st.view = null; }
+function saveStCache(){ lsSet(ST_CACHE, JSON.stringify({ user: userName, open: st.open, details: st.details, history: st.history })); }
 async function loadStocktakeTab(){
-  document.getElementById('stBody').innerHTML = '<div class="empty">載入中…</div>';
   document.getElementById('stFoot').innerHTML = '';
+  // 先顯示上次的盤點資料（同步中，不能輸入），再向後端取最新
+  let c = null; try{ c = JSON.parse(lsGet(ST_CACHE) || 'null'); }catch(e){}
+  if(c && c.user === userName && items.length){ applyStData(c); st.syncing = true; renderStocktake(); }
+  else document.getElementById('stBody').innerHTML = '<div class="empty">載入中…</div>';
   await reloadStocktake();
 }
 async function reloadStocktake(){
   const res = await apiPost({action:'getStocktakes'});
+  st.syncing = false;
   if(res.error){ document.getElementById('stBody').innerHTML = ''; showToast(res.error,'error'); return; }
-  st.open = res.open; st.details = res.details||[]; st.history = res.history||[]; st.view = null;
+  applyStData(res); saveStCache();
   if(!items.length) await loadItems();
+  if(!document.body.classList.contains('st-open')) return;   // 已切到別的分頁
   renderStocktake();
 }
 function stDiffHtml(d){
@@ -1157,8 +1165,10 @@ function stDiffHtml(d){
 function renderStocktake(){
   const body = document.getElementById('stBody'), foot = document.getElementById('stFoot');
   const title = document.getElementById('stTitle');
-  document.getElementById('stPrintBtn').style.display = st.open ? '' : 'none';
-  document.getElementById('stExportBtn').style.display = st.view ? '' : 'none';
+  document.getElementById('stPrintBtn').style.display = st.view ? 'none' : '';
+  document.getElementById('stPrintBtn').lastChild.textContent = st.open ? '列印盤點表' : '列印空白盤點表';
+  document.getElementById('stExportBtn').style.display = '';   // 歷史：匯出明細；其他：下載盤點表（手機無法列印時用）
+  document.getElementById('stExportBtn').lastChild.textContent = st.view ? '匯出明細' : '下載盤點表 Excel';
 
   if(st.view){ // 歷史明細
     const v = st.view;
@@ -1181,7 +1191,7 @@ function renderStocktake(){
   }
 
   if(!st.open){ // 沒有進行中：開始 + 歷史
-    title.textContent = '盤點';
+    title.textContent = st.syncing ? '盤點（同步中…）' : '盤點';
     const hist = st.history.map((h,i)=>`<div class="sthist">
       <div class="hinfo"><div class="htitle">${esc(h.盤點ID)} <span class="tag ${h.狀態==='已取消'?'cancel':''}">${esc(h.狀態)}</span></div>
       <div class="hsub">${esc(fmtTime(h.開始時間))} · ${esc(h.開始者)} · 已盤 ${esc(h.已盤)} · 差異 ${esc(h.有差異)} 項 · 調整 ${esc(h.調整合計)}${h.備註?' · '+esc(h.備註):''}</div></div>
@@ -1194,18 +1204,19 @@ function renderStocktake(){
       ? '還沒有完成過盤點。建議每半年盤點一次。'
       : `上次完成盤點：${lt.getFullYear()}/${lt.getMonth()+1}/${lt.getDate()}（${days} 天前）。${due ? '已超過半年，建議安排盤點。' : '建議每半年盤點一次。'}`}</div>`;
     body.innerHTML = remind + `<p class="stintro">
-      開始後逐項輸入實際點到的數量，系統會自動算出差異。盤點期間照常可以拿出、補入。<br>
-      按「完成盤點」才會一次調整庫存；完成前隨時可以修改或取消。</p>
+      <b>步驟：</b>按下方「開始盤點」建立盤點單 → 畫面會列出目前全部 ${items.length} 項品項和帳面數量 → 可按右上「列印盤點表」印出來帶去現場點 → 回來逐項輸入實點數量，系統自動算出差異 → 按「完成盤點」才會一次調整庫存。<br>
+      完成前隨時可以修改或取消；盤點期間照常可以拿出、補入。</p>
       <h4 style="margin:6px 0 12px;font-size:16px">過去的盤點</h4>${hist || '<div class="empty" style="padding:20px">還沒有盤點記錄</div>'}`;
     body.querySelectorAll('.sthist button').forEach(b=> b.onclick = ()=>viewStocktake(st.history[+b.dataset.i]));
     foot.innerHTML = '<button class="save">＋ 開始盤點</button>';
     foot.firstChild.onclick = startStocktake;
+    foot.firstChild.disabled = !!st.syncing;
     return;
   }
 
   // 進行中
   const o = st.open, map = stDetailMap(st.details);
-  title.textContent = `盤點 ${o.盤點ID} 進行中`;
+  title.textContent = `盤點 ${o.盤點ID} 進行中${st.syncing?'（同步中…）':''}`;
   const counted = items.filter(i=>map[i.ID]).length;
   const diffs = items.filter(i=>map[i.ID] && Number(map[i.ID].差異)!==0).length;
   const list = items.filter(i=> st.filter==='all' || (st.filter==='todo' && !map[i.ID]) || (st.filter==='diff' && map[i.ID] && Number(map[i.ID].差異)!==0));
@@ -1213,6 +1224,7 @@ function renderStocktake(){
       <div class="stat"><span class="label">進度</span><span class="value">${counted} / ${items.length}</span></div>
       <div class="stat low"><span class="label">有差異</span><span class="value">${diffs}</span></div>
       <div class="stat"><span class="label">開始</span><span class="value">${esc(fmtTime(o.開始時間))}</span></div></div>
+    ${o.備註?`<p style="margin:-4px 0 10px;color:var(--mid)">${esc(o.備註)}</p>`:''}
     <div class="stfilter">
       <button data-f="all" class="${st.filter==='all'?'on':''}">全部</button>
       <button data-f="todo" class="${st.filter==='todo'?'on':''}">未盤 ${items.length-counted}</button>
@@ -1224,7 +1236,7 @@ function renderStocktake(){
         ${src?`<img src="${esc(src)}" alt="" loading="lazy">`:'<img alt="" style="visibility:hidden">'}
         <div class="sinfo"><div class="sname">${esc(it.品名)}</div>
         <div class="sbook">帳面 <b>${esc(it.數量)}</b> ${esc(it.單位)}${d?` · 輸入時帳面 ${esc(d.帳面數量)}`:''}</div></div>
-        <input type="number" inputmode="numeric" min="0" placeholder="實點" value="${d?esc(d.實點數量):''}">
+        <input type="number" inputmode="numeric" min="0" placeholder="實點" value="${d?esc(d.實點數量):''}"${st.syncing?' disabled':''}>
         ${stDiffHtml(d?d.差異:null)}
         <div class="sstate">${d?'✓':''}</div></div>`;
     }).join('') || '<div class="empty">沒有符合的品項</div>'}</div>`;
@@ -1237,15 +1249,27 @@ function renderStocktake(){
   foot.innerHTML = '<button class="cancel">取消盤點</button><button class="save">完成盤點</button>';
   foot.children[0].onclick = cancelStocktake;
   foot.children[1].onclick = finalizeStocktake;
+  if(st.syncing){ foot.children[0].disabled = true; foot.children[1].disabled = true; }
 }
 async function startStocktake(){
-  const note = prompt('開始新的盤點。\n備註（選填，例如「2026 Q3 盤點」）：', '');
+  const note = prompt('開始新的盤點。\n盤點名稱／備註（選填，例如「2026 Q3 盤點」）：', '');
   if(note===null) return;
+  const btn = document.querySelector('#stFoot .save');
+  if(btn){ btn.disabled = true; btn.textContent = '建立盤點單中…'; }
+  document.getElementById('stBody').insertAdjacentHTML('afterbegin', '<div class="stremind" id="stCreating">正在建立盤點單，請稍候…</div>');
   const res = await apiPost({action:'startStocktake', note});
-  if(res.error){ showToast(res.error,'error'); return; }
-  showToast(`已建立盤點單 ${res.stId}`,'success');
+  if(res.error){
+    document.getElementById('stCreating')?.remove();
+    if(btn){ btn.disabled = false; btn.textContent = '＋ 開始盤點'; }
+    showToast(res.error,'error');
+    if(/進行中/.test(res.error)) await reloadStocktake();   // 已經有人開了：直接顯示那一張
+    return;
+  }
   st.filter = 'all';
-  await reloadStocktake();
+  if(res.open){ st.open = res.open; st.details = []; st.view = null; saveStCache(); renderStocktake(); }
+  else await reloadStocktake();
+  window.scrollTo({ top: document.getElementById('view-st').offsetTop - 10, behavior: 'smooth' });
+  showToast(`已建立盤點單 ${res.stId}：請逐項輸入實點，或按右上「列印盤點表」`,'success');
 }
 /** 清空輸入框＝把這項改回「未盤」 */
 async function clearCount(itemId, inp){
@@ -1255,7 +1279,7 @@ async function clearCount(itemId, inp){
   const res = await apiPost({action:'clearCount', stId:st.open.盤點ID, itemId});
   if(res.error){ state.textContent = '!'; showToast(res.error,'error'); return; }
   st.details = st.details.filter(d=>String(d.品項ID)!==itemId);
-  renderStocktake();
+  saveStCache(); renderStocktake();
   showToast('已清除這項的實點數量','success');
 }
 async function saveCount(itemId, inp){
@@ -1270,6 +1294,7 @@ async function saveCount(itemId, inp){
   const it = items.find(i=>i.ID===itemId);
   st.details = st.details.filter(d=>String(d.品項ID)!==itemId);
   st.details.push({品項ID:itemId, 品名:it?it.品名:'', 帳面數量:res.book, 實點數量:res.counted, 差異:res.diff});
+  saveStCache();
   // 只更新這一列與統計，避免打斷連續輸入
   row.className = 'strow ' + (res.diff ? 'diff' : 'done');
   row.querySelector('.sdiff').outerHTML = stDiffHtml(res.diff);
@@ -1304,7 +1329,9 @@ async function finalizeStocktake(){
 }
 async function cancelStocktake(){
   if(!confirm(`取消盤點 ${st.open.盤點ID}？\n已輸入的實點數量會保留在記錄中，但不會調整庫存。`)) return;
+  const btn = document.querySelector('#stFoot .cancel'); if(btn){ btn.disabled = true; btn.textContent = '取消中…'; }
   const res = await apiPost({action:'cancelStocktake', stId:st.open.盤點ID});
+  if(btn){ btn.disabled = false; btn.textContent = '取消盤點'; }
   if(res.error){ showToast(res.error,'error'); return; }
   showToast('已取消盤點','success');
   await reloadStocktake();
@@ -1316,12 +1343,13 @@ async function viewStocktake(h){
   renderStocktake();
 }
 function printStocktake(){
-  if(!st.open) return;
-  const map = stDetailMap(st.details);
+  if(!items.length){ showToast('庫存資料還沒載入，請稍候再試','error'); return; }
+  const o = st.open;
+  const map = o ? stDetailMap(st.details) : {};
   const d = new Date();
   const area = document.getElementById('printArea');
-  area.innerHTML = `<h2>贈品盤點表　${esc(st.open.盤點ID)}</h2>
-    <p>列印時間：${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}　${st.open.備註?'備註：'+esc(st.open.備註):''}</p>
+  area.innerHTML = `<h2>贈品盤點表　${o ? esc(o.盤點ID) : '（尚未建立盤點單）'}</h2>
+    <p>列印時間：${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}　共 ${items.length} 項　${o&&o.備註?'備註：'+esc(o.備註):''}</p>
     <table><thead><tr><th>#</th><th>品名</th><th>單位</th><th>帳面</th><th>實點</th><th>備註</th></tr></thead>
     <tbody>${items.map((it,i)=>`<tr><td>${i+1}</td><td>${esc(it.品名)}</td><td>${esc(it.單位)}</td>
       <td class="num">${esc(it.數量)}</td><td class="blank">${map[it.ID]?esc(map[it.ID].實點數量):''}</td><td></td></tr>`).join('')}</tbody></table>
@@ -1329,7 +1357,16 @@ function printStocktake(){
   window.print();
 }
 async function exportStocktake(){
-  if(!st.view || !await xlsxReady()) return;
+  if(!await xlsxReady()) return;
+  if(!st.view){   // 下載盤點表（與列印內容相同）
+    const map = st.open ? stDetailMap(st.details) : {};
+    const rows = items.map((it,i)=>({ '#':i+1, 品項ID:it.ID, 品名:it.品名, 單位:it.單位, 帳面數量:it.數量, 實點數量: map[it.ID] ? map[it.ID].實點數量 : '', 備註:'' }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '盤點表');
+    XLSX.writeFile(wb, `盤點表_${st.open ? st.open.盤點ID : '空白'}_${todayStr()}.xlsx`);
+    showToast('已下載盤點表','success');
+    return;
+  }
   const rows = st.viewDetails.map(d=>({ 品項ID:d.品項ID, 品名:d.品名, 帳面數量:d.帳面數量, 實點數量:d.實點數量, 差異:d.差異, 備註:d.備註, 輸入者:d.輸入者, 輸入時間:d.輸入時間, 調整記錄ID:d.調整記錄ID }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{說明:'沒有明細'}]), '盤點明細');
@@ -1488,7 +1525,7 @@ async function doLogout(){
   closeOverlay('accountOverlay');
   await apiPost({action:'logout'});
   setSession('','');
-  lsSet(ITEMS_CACHE, null); lsSet(LOGS_CACHE, null);
+  lsSet(ITEMS_CACHE, null); lsSet(LOGS_CACHE, null); lsSet('eink_st_cache', null);
   items = []; renderStats();
   document.getElementById('grid').innerHTML = '';
   showLogin();
