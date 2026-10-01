@@ -254,6 +254,7 @@ body.st-open .toast{bottom:96px}
       </div>
       <div class="tools">
         <button class="hbtn" onclick="exportItems()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>匯出</button>
+        <button class="hbtn mgr" id="exportAllBtn" onclick="exportAll()" title="庫存、全部異動記錄、盤點記錄一次下載成一個 Excel（備份用）"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M3 17v3h18v-3"/></svg>全部匯出</button>
         <button class="hbtn mgr" onclick="document.getElementById('importFile').click()"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>匯入</button>
         <button class="hbtn" onclick="openAccount()"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>設定</button>
         <span class="user" id="userLabel"></span>
@@ -1075,6 +1076,45 @@ async function exportLogs(){
   XLSX.writeFile(wb, `異動記錄_${todayStr()}.xlsx`);
   if(res.total > logs.length) showToast(`記錄共 ${res.total} 筆，這次只匯出最新 ${logs.length} 筆；請用日期篩選分段匯出`,'error');
   else showToast('已匯出異動記錄 Excel','success');
+}
+/** 全部匯出（備份用）：最新庫存＋全部異動記錄＋盤點記錄，一個 Excel 多個分頁 */
+async function exportAll(){
+  const btn = document.getElementById('exportAllBtn');
+  if(btn.disabled) return;
+  if(!await xlsxReady()) return;
+  btn.disabled = true; const label = btn.lastChild.textContent; btn.lastChild.textContent = '匯出中…';
+  try{
+    const ga = await apiPost({action:'getAll'});            // 不用畫面上的舊資料，重新取最新
+    if(ga.error){ showToast(ga.error,'error'); return; }
+    const inv = ga.items || [];
+    let logs = [], total = 0, off = 0;
+    do{                                                      // 記錄超過 5000 筆時分段取完
+      const r = await apiPost({action:'getLogs', limit:5000, offset:off});
+      if(r.error){ showToast(r.error,'error'); return; }
+      total = r.total || 0; logs = logs.concat(r.logs || []); off += 5000;
+    }while(off < total);
+    const st = await apiPost({action:'getStocktakes'});
+    const stRows = st.error ? [] : [st.open, ...(st.history||[])].filter(Boolean);
+    const wb = XLSX.utils.book_new();
+    const now = new Date();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['E Ink 贈品庫存 全部匯出'],
+      ['匯出時間', `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`],
+      ['匯出者', userName || ''],
+      ['品項數', inv.length],
+      ['庫存總量', inv.reduce((n,i)=>n+(Number(i.數量)||0),0)],
+      ['異動記錄筆數', logs.length],
+      ['盤點單數', stRows.length],
+      [],
+      ['說明', '這是備份檔，請存在自己電腦或公司硬碟。異動記錄依時間由舊到新排列。']
+    ]), '說明');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inv.map(i=>({ ID:i.ID, 品名:i.品名, 數量:i.數量, 單位:i.單位, 低庫存警示:i.低庫存警示, 備註:i.備註, 最後更新:i.最後更新, 圖片:i.圖片 }))), '庫存');
+    const lrows = logs.slice().reverse().map(l=>({ 記錄ID:l.記錄ID, 時間:l.時間, 類型:l.類型, 品項ID:l.品項ID, 品名:l.品名, 變動量:l.變動量, 變動後數量:l.變動後數量, 備註:l.備註, 操作者:l.操作者, 沖銷對象:l.沖銷對象||'', 已被沖銷:l.已沖銷||'' }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lrows.length ? lrows : [{說明:'沒有記錄'}]), '異動記錄');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(stRows.length ? stRows : [{說明:'沒有盤點記錄'}]), '盤點');
+    XLSX.writeFile(wb, `贈品庫存_全部匯出_${todayStr()}.xlsx`);
+    showToast(`已匯出：${inv.length} 項品項、${logs.length} 筆記錄`,'success');
+  }finally{ btn.disabled = false; btn.lastChild.textContent = label; }
 }
 async function importItems(e){
   const f = e.target.files[0];
